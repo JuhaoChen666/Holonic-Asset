@@ -15,22 +15,6 @@ Project、Asset、Record、Media 等业务模块均位于 Core API 内，不拆�
 
 ### 1.1 拓扑
 
-```mermaid
-flowchart TB
-    Browser["Browser"] --> Traefik["Traefik"]
-    Traefik --> Web["React + Vite"]
-    Traefik --> API["Core API"]
-
-    API --> DB[("PostgreSQL")]
-    API --> Redis[("Redis")]
-    API <--> NATS[("NATS JetStream")]
-    API <--> S3[("S3 Object Storage")]
-
-    NATS <--> AI["Python AI Service"]
-    NATS <--> Worker["Rust Asset Worker"]
-    AI <--> S3
-    Worker <--> S3
-```
 
 ![Holonic-Asset System Architecture](<../image/holonic-Asset System Architecture.png>)
 
