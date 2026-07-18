@@ -32,6 +32,8 @@ flowchart TB
     Worker <--> S3
 ```
 
+![Holonic-Asset System Architecture](<../image/holonic-Asset System Architecture.png>)
+
 ### 1.2 通信边界
 
 - 浏览器只访问 Traefik；业务 HTTP 请求进入 Core API。

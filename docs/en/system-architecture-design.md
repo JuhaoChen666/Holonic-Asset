@@ -32,6 +32,8 @@ flowchart TB
     Worker <--> S3
 ```
 
+![Holonic-Asset System Architecture](<../image/holonic-Asset System Architecture.png>)
+
 ### 1.2 Communication boundaries
 
 - The browser only talks to Traefik; business HTTP requests enter Core API.
