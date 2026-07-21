@@ -1,65 +1,104 @@
+package interfaces
+
+import "context"
+
+// CharacterService defines character generation capabilities owned by the AI module.
 type CharacterService interface {
-	CrreateCharacter(
+	CreateCharacter(
 		ctx context.Context,
-		request *CreateCharacterRequest)(*CreateCharacterResponse, error)
+		request *CreateCharacterRequest,
+	) (*CreateCharacterResponse, error)
 
 	EditCharacter(
 		ctx context.Context,
-		request *CreateCharacterRequest)(*CreateCharacterResponse, error)
+		request *EditCharacterRequest,
+	) (*EditCharacterResponse, error)
 }
 
-type SceneryService interface{
+// SceneryService defines scenery layer generation capabilities owned by the AI module.
+type SceneryService interface {
 	CreateLayer(
 		ctx context.Context,
-		request *CreateLayerRequest) (*CreateLayerResponse, error)
+		request *CreateLayerRequest,
+	) (*CreateLayerResponse, error)
 
 	EditLayer(
 		ctx context.Context,
-		request *CreateLayerRequest) (*CreateLayerResponse, error)
+		request *EditLayerRequest,
+	) (*EditLayerResponse, error)
 }
 
-type TileSetService interface{
-	CreateItem(
+// TileSetService defines tile-set generation capabilities owned by the AI module.
+type TileSetService interface {
+	CreateTileSet(
 		ctx context.Context,
-		request *CreateItemRequest) (*CreateItemResponse, error)
+		request *CreateTileSetRequest,
+	) (*CreateTileSetResponse, error)
 
-	EditItem(
+	EditTileSet(
 		ctx context.Context,
-		request *CreateItemRequest) (*CreateItemResponse, error)
+		request *EditTileSetRequest,
+	) (*EditTileSetResponse, error)
 }
 
+// ObjectService defines object generation capabilities owned by the AI module.
 type ObjectService interface {
 	CreateObject(
 		ctx context.Context,
-		request *CreateObjectRequest) (*CreateObjectResponse, error)
+		request *CreateObjectRequest,
+	) (*CreateObjectResponse, error)
 
 	EditObject(
 		ctx context.Context,
-		request *CreateObjectRequest) (*CreateObjectResponse, error)
+		request *EditObjectRequest,
+	) (*EditObjectResponse, error)
 }
 
-type ProjectService interface{
-	CreateProject(
-		ctx context.Context,
-		request *CreateProjectRequest) (*CreateProjectResponse, error)
-}
-
-type AnimationService interface{
+// AnimationService defines animation generation and frame editing capabilities.
+type AnimationService interface {
 	CreateAnimation(
 		ctx context.Context,
-		request *CreateAnimationRequest) (*CreateAnimationResponse, error)
+		request *CreateAnimationRequest,
+	) (*CreateAnimationResponse, error)
 
 	EditFrame(
 		ctx context.Context,
-		request *CreateFrameRequest) (*CreateFrameResponse, error)
+		request *EditFrameRequest,
+	) (*EditFrameResponse, error)
 }
 
-type UIService interface{
+// UIService defines UI component generation capabilities owned by the AI module.
+type UIService interface {
 	CreateUI(
 		ctx context.Context,
-		request *CreateUIRequest) (*CreateUIResponse, error)
+		request *CreateUIRequest,
+	) (*CreateUIResponse, error)
 
-	EditUIcompoent(
+	EditUIComponent(
 		ctx context.Context,
-		request *CreateUIcompoentRequest) (*CreateUIcompoentResponse, error)
+		request *EditUIComponentRequest,
+	) (*EditUIComponentResponse, error)
+}
+
+// GenerationService defines the lifecycle operations for asynchronous AI work.
+type GenerationService interface {
+	GetGenerationProgress(
+		ctx context.Context,
+		taskID uint,
+	) (*GenerationProgress, error)
+
+	CancelGeneration(ctx context.Context, taskID uint) error
+
+	ConfirmGenerationResult(
+		ctx context.Context,
+		request *ConfirmGenerationResultRequest,
+	) error
+}
+
+// LLMClient defines the provider adapter required by the AI module.
+type LLMClient interface {
+	Chat(ctx context.Context, request *LLMRequest) (*LLMResponse, error)
+	GenerateImage(ctx context.Context, request *ImageGenerationRequest) (*GenerationResult, error)
+	GetGenerationResult(ctx context.Context, generationID string) (*GenerationResult, error)
+	CancelGeneration(ctx context.Context, generationID string) error
 }
