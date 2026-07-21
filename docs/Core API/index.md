@@ -19,13 +19,13 @@ The CoreAPI module is the main module of the Core API. It contains the following
 
 The AI module accepts AI-assisted generation and editing requests from clients and coordinates their execution with the external AI Service. It validates the referenced Project, Asset, and Media resources, creates the required Tasks, and exposes provider-independent progress and result data. The module does not run models directly or allow the AI Service to modify Core API business data.
 
-The service interfaces, request and response models, task handoff rules, and error behavior are defined in the [AI module API design](./Interface/ai_service.go).
+The service interfaces, request and response models, task handoff rules, and error behavior are defined in the [AI module](./module/ai_service.go).
 
 **Project**
 
 The Project module manages the lifecycle and configuration of a project. It provides the ownership boundary for Assets, Media, Tasks, Records, and Taxonomy associations, and ensures that operations are scoped to the correct project and authorized user.
 
-The project lifecycle operations, validation rules, resource relationships, and API contracts are defined in the [Project module API design](./module_Project.md).
+The project lifecycle operations, validation rules, resource relationships, and API contracts are defined in the [Project module](./module/project.go).
 
 **Login**
 
