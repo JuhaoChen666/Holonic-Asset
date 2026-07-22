@@ -6,6 +6,19 @@ import (
 	data "../data structure"
 )
 
+// CharacterService defines Character generation and editing.
+type CharacterService interface {
+	GenerateCharacter(
+		ctx context.Context,
+		request *data.GenerateCharacterRequest,
+	) (*data.GenerateCharacterResponse, error)
+
+	EditCharacter(
+		ctx context.Context,
+		request *data.EditCharacterRequest,
+	) (*data.EditCharacterResponse, error)
+}
+
 // ProjectPreviewService defines Project preview generation.
 type ProjectPreviewService interface {
 	GenerateProjectPreview(

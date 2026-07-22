@@ -21,6 +21,7 @@ type AIServiceModule interface {
 	// RegisterTask provides long-running generation orchestration.
 	RegisterTask(task TaskModule)
 
+	RegisterCharacterService(service interfaces.CharacterService)
 	RegisterProjectPreviewService(service interfaces.ProjectPreviewService)
 	RegisterTileSetService(service interfaces.TileSetService)
 	RegisterObjectService(service interfaces.ObjectService)
@@ -28,6 +29,16 @@ type AIServiceModule interface {
 	RegisterAnimationService(service interfaces.AnimationService)
 	RegisterUIService(service interfaces.UIService)
 	RegisterLLMClient(client interfaces.LLMClient)
+
+	GenerateCharacter(
+		ctx context.Context,
+		request *data.GenerateCharacterRequest,
+	) (*data.GenerateCharacterResponse, error)
+
+	EditCharacter(
+		ctx context.Context,
+		request *data.EditCharacterRequest,
+	) (*data.EditCharacterResponse, error)
 
 	GenerateProjectPreview(
 		ctx context.Context,

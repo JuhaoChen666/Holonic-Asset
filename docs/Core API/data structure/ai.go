@@ -7,6 +7,29 @@ type Size struct {
 	Height uint `json:"height"`
 }
 
+// GenerateCharacterRequest identifies the Character prototype to generate.
+type GenerateCharacterRequest struct {
+	AssetID         uint     `json:"assetId"`
+	AssetResourceID uint     `json:"assetResourceId"`
+	Prompt          string   `json:"prompt"`
+	ReferenceURLs   []string `json:"referenceUrls,omitempty"`
+}
+
+type GenerateCharacterResponse struct {
+	TaskID uint `json:"taskId"`
+}
+
+// EditCharacterRequest identifies the existing Character prototype to edit.
+type EditCharacterRequest struct {
+	AssetID         uint   `json:"assetId"`
+	AssetResourceID uint   `json:"assetResourceId"`
+	Prompt          string `json:"prompt"`
+}
+
+type EditCharacterResponse struct {
+	TaskID uint `json:"taskId"`
+}
+
 // GenerateTileSetItemRequest identifies the TileSet Item to generate.
 type GenerateTileSetItemRequest struct {
 	AssetID         uint     `json:"assetId"`
