@@ -20,7 +20,6 @@ func TestAIRoutesReturnPlaceholderResponses(t *testing.T) {
 
 	routes := []string{
 		"/api/v1/ai/tile-set/item/edit",
-		"/api/v1/ai/object/edit",
 		"/api/v1/ai/scenery/layer/edit",
 		"/api/v1/ai/animation/frame/edit",
 		"/api/v1/ai/ui/component/edit",
@@ -44,7 +43,7 @@ func TestAIRoutesReturnPlaceholderResponses(t *testing.T) {
 	}
 }
 
-func TestAIRoutesDoNotExposeGenerationOrCharacterEdit(t *testing.T) {
+func TestAIRoutesDoNotExposeUnsupportedOperations(t *testing.T) {
 	aiService := service.NewAIService()
 	aiHandler := handler.NewAIHandler(aiService)
 	e := internal.Register(nil, nil, aiHandler)
@@ -55,6 +54,7 @@ func TestAIRoutesDoNotExposeGenerationOrCharacterEdit(t *testing.T) {
 		"/api/v1/ai/project-preview/generate",
 		"/api/v1/ai/tile-set/item/generate",
 		"/api/v1/ai/object/generate",
+		"/api/v1/ai/object/edit",
 		"/api/v1/ai/scenery/layer/generate",
 		"/api/v1/ai/animation/generate",
 		"/api/v1/ai/ui/generate",
