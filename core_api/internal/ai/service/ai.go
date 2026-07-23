@@ -24,7 +24,6 @@ type TileSetService interface {
 
 type ObjectService interface {
 	GenerateObject(ctx context.Context, request *dto.GenerateObjectRequest) (*dto.GenerateObjectResponse, error)
-	EditObject(ctx context.Context, request *dto.EditObjectRequest) (*dto.EditObjectResponse, error)
 }
 
 type SceneryService interface {
@@ -82,10 +81,6 @@ func (*aiService) EditTileSetItem(context.Context, *dto.EditTileSetItemRequest) 
 
 func (*aiService) GenerateObject(context.Context, *dto.GenerateObjectRequest) (*dto.GenerateObjectResponse, error) {
 	return &dto.GenerateObjectResponse{}, nil
-}
-
-func (*aiService) EditObject(context.Context, *dto.EditObjectRequest) (*dto.EditObjectResponse, error) {
-	return &dto.EditObjectResponse{}, nil
 }
 
 func (*aiService) GenerateSceneryLayer(

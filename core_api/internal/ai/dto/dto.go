@@ -83,16 +83,6 @@ type GenerateObjectResponse struct {
 	TaskID uint `json:"taskId"`
 }
 
-// EditObjectRequest identifies the existing Object prototype to edit.
-type EditObjectRequest struct {
-	AssetID uint `json:"assetId"`
-	ImageEditInput
-}
-
-type EditObjectResponse struct {
-	TaskID uint `json:"taskId"`
-}
-
 // GenerateProjectPreviewRequest identifies the Project used to build the preview context.
 type GenerateProjectPreviewRequest struct {
 	ProjectID uint   `json:"projectId"`
