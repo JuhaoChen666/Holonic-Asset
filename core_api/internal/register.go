@@ -6,10 +6,16 @@ import (
 	ai "github.com/1024XEngineer/Holonic-Asset/internal/ai/router"
 	asset "github.com/1024XEngineer/Holonic-Asset/internal/asset/router"
 	project "github.com/1024XEngineer/Holonic-Asset/internal/project/router"
+	taxonomy "github.com/1024XEngineer/Holonic-Asset/internal/taxonomy/router"
 )
 
 // Register assembles and returns all routes.
-func Register(as asset.AssetRouter, pr project.ProjectRouter, ar ai.AIRouter) *echo.Echo {
+func Register(
+	as asset.AssetRouter,
+	pr project.ProjectRouter,
+	ar ai.AIRouter,
+	tr taxonomy.TaxonomyRouter,
+) *echo.Echo {
 	e := echo.New()
 	api := e.Group("/api/v1")
 	if as != nil {
@@ -20,6 +26,9 @@ func Register(as asset.AssetRouter, pr project.ProjectRouter, ar ai.AIRouter) *e
 	}
 	if ar != nil {
 		ai.RegisterRoutes(api, ar)
+	}
+	if tr != nil {
+		taxonomy.RegisterRoutes(api, tr)
 	}
 
 	return e
