@@ -13,7 +13,7 @@ import (
 func TestTaxonomyRoutesReturnPlaceholderResponses(t *testing.T) {
 	discoveryService := service.NewAssetDiscoveryService()
 	taxonomyHandler := handler.NewTaxonomyHandler(discoveryService)
-	e := internal.Register(nil, nil, nil, taxonomyHandler)
+	e := internal.Register(nil, nil, nil, nil, taxonomyHandler)
 
 	routes := []string{
 		"/api/v1/projects/42/assets/9/related",
@@ -44,7 +44,7 @@ func TestTaxonomyRoutesReturnPlaceholderResponses(t *testing.T) {
 func TestTaxonomyRoutesDoNotExposeInternalOperations(t *testing.T) {
 	discoveryService := service.NewAssetDiscoveryService()
 	taxonomyHandler := handler.NewTaxonomyHandler(discoveryService)
-	e := internal.Register(nil, nil, nil, taxonomyHandler)
+	e := internal.Register(nil, nil, nil, nil, taxonomyHandler)
 
 	routes := []struct {
 		method string
@@ -81,7 +81,7 @@ func TestTaxonomyRoutesDoNotExposeInternalOperations(t *testing.T) {
 func TestTaxonomyRoutesRejectInvalidIDs(t *testing.T) {
 	discoveryService := service.NewAssetDiscoveryService()
 	taxonomyHandler := handler.NewTaxonomyHandler(discoveryService)
-	e := internal.Register(nil, nil, nil, taxonomyHandler)
+	e := internal.Register(nil, nil, nil, nil, taxonomyHandler)
 
 	routes := []string{
 		"/api/v1/projects/0/assets/9/related",
