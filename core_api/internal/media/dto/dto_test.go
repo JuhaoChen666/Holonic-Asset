@@ -7,28 +7,24 @@ import (
 	"github.com/1024XEngineer/Holonic-Asset/internal/media/dto"
 )
 
-func TestCreateMediaUploadRequestJSONContract(t *testing.T) {
-	request := dto.CreateMediaUploadRequest{
-		AssetID:         42,
-		AssetResourceID: 99,
-		ContentType:     "image/png",
-	}
+func TestCreateProjectPreviewUploadRequestJSONContract(t *testing.T) {
+	request := dto.CreateProjectPreviewUploadRequest{ContentType: "image/png"}
 
 	encoded, err := json.Marshal(request)
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
 	}
 
-	want := `{"assetId":42,"assetResourceId":99,"contentType":"image/png"}`
+	want := `{"contentType":"image/png"}`
 	if string(encoded) != want {
 		t.Fatalf("expected %s, got %s", want, encoded)
 	}
 }
 
-func TestObjectUploadTargetJSONContract(t *testing.T) {
-	target := dto.ObjectUploadTarget{
-		ObjectKey: "assets/42/resources/99/source.png",
-		UploadURL: "https://storage.example/upload",
+func TestProjectPreviewUploadTargetJSONContract(t *testing.T) {
+	target := dto.ProjectPreviewUploadTarget{
+		ObjectKey: "users/7/project-previews/uuid",
+		UploadURL: "https://account-id.r2.cloudflarestorage.com/bucket/users/7/project-previews/uuid?X-Amz-Signature=...",
 	}
 
 	encoded, err := json.Marshal(target)
@@ -36,7 +32,7 @@ func TestObjectUploadTargetJSONContract(t *testing.T) {
 		t.Fatalf("marshal target: %v", err)
 	}
 
-	want := `{"objectKey":"assets/42/resources/99/source.png","uploadUrl":"https://storage.example/upload"}`
+	want := `{"objectKey":"users/7/project-previews/uuid","uploadURL":"https://account-id.r2.cloudflarestorage.com/bucket/users/7/project-previews/uuid?X-Amz-Signature=..."}`
 	if string(encoded) != want {
 		t.Fatalf("expected %s, got %s", want, encoded)
 	}

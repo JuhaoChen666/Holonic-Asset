@@ -8,17 +8,13 @@ import (
 	"github.com/1024XEngineer/Holonic-Asset/internal/media/service"
 )
 
-func TestCreateUploadTargetReturnsPlaceholderTarget(t *testing.T) {
-	mediaService := service.NewMediaUploadService()
-	request := &dto.CreateMediaUploadRequest{
-		AssetID:         42,
-		AssetResourceID: 99,
-		ContentType:     "image/png",
-	}
+func TestCreateProjectPreviewUploadTargetReturnsPlaceholderTarget(t *testing.T) {
+	mediaService := service.NewMediaService()
+	request := &dto.CreateProjectPreviewUploadRequest{ContentType: "image/png"}
 
-	target, err := mediaService.CreateUploadTarget(context.Background(), request)
+	target, err := mediaService.CreateProjectPreviewUploadTarget(context.Background(), request)
 	if err != nil {
-		t.Fatalf("create upload target: %v", err)
+		t.Fatalf("create project preview upload target: %v", err)
 	}
 	if target == nil {
 		t.Fatal("expected a non-nil placeholder target")
