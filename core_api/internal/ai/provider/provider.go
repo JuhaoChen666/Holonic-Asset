@@ -10,6 +10,12 @@ type Size struct {
 	Height uint `json:"height"`
 }
 
+type ImageGenerationInput struct {
+	Prompt        string   `json:"prompt"`
+	ReferenceURLs []string `json:"referenceUrls,omitempty"`
+	Size          Size     `json:"size"`
+}
+
 type MessageRole string
 
 type ContentPartType string
@@ -57,12 +63,16 @@ type LLMResponse struct {
 }
 
 type ImageGenerationRequest struct {
-	RequestID     string   `json:"requestId"`
-	Model         string   `json:"model"`
-	Prompt        string   `json:"prompt"`
-	ReferenceURLs []string `json:"referenceUrls,omitempty"`
-	Size          Size     `json:"size"`
-	Count         uint     `json:"count"`
+	RequestID string `json:"requestId"`
+	Model     string `json:"model"`
+	ImageGenerationInput
+}
+
+type ImageEditRequest struct {
+	RequestID  string   `json:"requestId"`
+	Model      string   `json:"model"`
+	Prompt     string   `json:"prompt"`
+	TargetURLs []string `json:"targetUrls"`
 }
 
 type GenerationStatus string
@@ -86,6 +96,7 @@ type GenerationResult struct {
 type LLMClient interface {
 	Chat(ctx context.Context, request *LLMRequest) (*LLMResponse, error)
 	GenerateImage(ctx context.Context, request *ImageGenerationRequest) (*GenerationResult, error)
+	EditImage(ctx context.Context, request *ImageEditRequest) (*GenerationResult, error)
 	GetGenerationResult(ctx context.Context, generationID string) (*GenerationResult, error)
 	CancelGeneration(ctx context.Context, generationID string) error
 }
