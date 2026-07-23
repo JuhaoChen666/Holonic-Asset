@@ -8,14 +8,14 @@ import (
 )
 
 type MediaRouter interface {
-	CreateUploadTarget(
+	CreateProjectPreviewUploadTarget(
 		c *echox.Context,
-		request dto.CreateMediaUploadRequest,
-	) (*dto.ObjectUploadTarget, error)
+		request dto.CreateProjectPreviewUploadRequest,
+	) (*dto.ProjectPreviewUploadTarget, error)
 }
 
 // RegisterRoutes registers all Media HTTP routes.
 func RegisterRoutes(e *echo.Group, r MediaRouter) {
 	media := e.Group("/media")
-	media.POST("/upload-target", echox.WrapReq(r.CreateUploadTarget))
+	media.POST("/project-preview/upload-target", echox.WrapReq(r.CreateProjectPreviewUploadTarget))
 }

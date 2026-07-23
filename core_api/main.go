@@ -22,7 +22,7 @@ func main() {
 	aiService := aiservice.NewAIService()
 	aiHandler := aihandler.NewAIHandler(aiService)
 
-	mediaService := mediaservice.NewMediaUploadService()
+	mediaService := mediaservice.NewMediaService()
 	mediaHandler := mediahandler.NewMediaHandler(mediaService)
 
 	e := internal.Register(nil, projectHandler, aiHandler, mediaHandler)

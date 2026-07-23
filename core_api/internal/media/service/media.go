@@ -6,25 +6,27 @@ import (
 	"github.com/1024XEngineer/Holonic-Asset/internal/media/dto"
 )
 
-// MediaUploadService defines direct upload-target creation.
-type MediaUploadService interface {
-	CreateUploadTarget(
+// ProjectPreviewUploadService creates presigned R2 upload targets for Project previews.
+type ProjectPreviewUploadService interface {
+	CreateProjectPreviewUploadTarget(
 		ctx context.Context,
-		request *dto.CreateMediaUploadRequest,
-	) (*dto.ObjectUploadTarget, error)
+		request *dto.CreateProjectPreviewUploadRequest,
+	) (*dto.ProjectPreviewUploadTarget, error)
 }
 
-type mediaUploadService struct{}
+// MediaService provides the Project preview upload application skeleton.
+type MediaService struct{}
 
-func NewMediaUploadService() MediaUploadService {
-	return &mediaUploadService{}
+// NewMediaService creates the Media application service used by the HTTP handler.
+func NewMediaService() *MediaService {
+	return &MediaService{}
 }
 
-func (*mediaUploadService) CreateUploadTarget(
+func (*MediaService) CreateProjectPreviewUploadTarget(
 	context.Context,
-	*dto.CreateMediaUploadRequest,
-) (*dto.ObjectUploadTarget, error) {
-	return &dto.ObjectUploadTarget{}, nil
+	*dto.CreateProjectPreviewUploadRequest,
+) (*dto.ProjectPreviewUploadTarget, error) {
+	return &dto.ProjectPreviewUploadTarget{}, nil
 }
 
-var _ MediaUploadService = (*mediaUploadService)(nil)
+var _ ProjectPreviewUploadService = (*MediaService)(nil)

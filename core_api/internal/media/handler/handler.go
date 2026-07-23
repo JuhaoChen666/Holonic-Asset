@@ -8,18 +8,18 @@ import (
 )
 
 type MediaHandler struct {
-	service service.MediaUploadService
+	service service.ProjectPreviewUploadService
 }
 
-func NewMediaHandler(mediaUploadService service.MediaUploadService) *MediaHandler {
-	return &MediaHandler{service: mediaUploadService}
+func NewMediaHandler(projectPreviewUploadService service.ProjectPreviewUploadService) *MediaHandler {
+	return &MediaHandler{service: projectPreviewUploadService}
 }
 
-func (h *MediaHandler) CreateUploadTarget(
+func (h *MediaHandler) CreateProjectPreviewUploadTarget(
 	c *echox.Context,
-	request dto.CreateMediaUploadRequest,
-) (*dto.ObjectUploadTarget, error) {
-	return h.service.CreateUploadTarget(c, &request)
+	request dto.CreateProjectPreviewUploadRequest,
+) (*dto.ProjectPreviewUploadTarget, error) {
+	return h.service.CreateProjectPreviewUploadTarget(c, &request)
 }
 
 var _ router.MediaRouter = (*MediaHandler)(nil)

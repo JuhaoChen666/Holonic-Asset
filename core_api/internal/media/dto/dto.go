@@ -1,14 +1,12 @@
 package dto
 
-// CreateMediaUploadRequest identifies the asset resource that needs a temporary upload target.
-type CreateMediaUploadRequest struct {
-	AssetID         uint   `json:"assetId"`
-	AssetResourceID uint   `json:"assetResourceId"`
-	ContentType     string `json:"contentType"`
+// CreateProjectPreviewUploadRequest describes a Project preview that will be uploaded directly to R2.
+type CreateProjectPreviewUploadRequest struct {
+	ContentType string `json:"contentType"`
 }
 
-// ObjectUploadTarget contains the stable object reference and temporary upload URL.
-type ObjectUploadTarget struct {
+// ProjectPreviewUploadTarget contains the R2 object reference and temporary upload URL.
+type ProjectPreviewUploadTarget struct {
 	ObjectKey string `json:"objectKey"`
-	UploadURL string `json:"uploadUrl"`
+	UploadURL string `json:"uploadURL"`
 }
