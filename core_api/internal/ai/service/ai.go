@@ -8,7 +8,6 @@ import (
 
 type CharacterService interface {
 	GenerateCharacter(ctx context.Context, request *dto.GenerateCharacterRequest) (*dto.GenerateCharacterResponse, error)
-	EditCharacter(ctx context.Context, request *dto.EditCharacterRequest) (*dto.EditCharacterResponse, error)
 }
 
 type ProjectPreviewService interface {
@@ -64,10 +63,6 @@ func NewAIService() AIService {
 
 func (*aiService) GenerateCharacter(context.Context, *dto.GenerateCharacterRequest) (*dto.GenerateCharacterResponse, error) {
 	return &dto.GenerateCharacterResponse{}, nil
-}
-
-func (*aiService) EditCharacter(context.Context, *dto.EditCharacterRequest) (*dto.EditCharacterResponse, error) {
-	return &dto.EditCharacterResponse{}, nil
 }
 
 func (*aiService) GenerateProjectPreview(
