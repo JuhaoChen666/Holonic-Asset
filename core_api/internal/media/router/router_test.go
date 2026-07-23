@@ -1,0 +1,63 @@
+package router_test
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/labstack/echo/v4"
+
+	"github.com/1024XEngineer/Holonic-Asset/internal"
+	"github.com/1024XEngineer/Holonic-Asset/internal/media/handler"
+	"github.com/1024XEngineer/Holonic-Asset/internal/media/service"
+)
+
+func TestMediaUploadTargetRouteReturnsPlaceholderResponse(t *testing.T) {
+	mediaService := service.NewMediaUploadService()
+	mediaHandler := handler.NewMediaHandler(mediaService)
+	e := internal.Register(nil, nil, nil, mediaHandler)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/media/upload-target",
+		strings.NewReader(`{"assetId":42,"assetResourceId":99,"contentType":"image/png"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	recorder := httptest.NewRecorder()
+
+	e.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if recorder.Body.String() != "{\"objectKey\":\"\",\"uploadUrl\":\"\"}\n" {
+		t.Fatalf("unexpected placeholder response: %s", recorder.Body.String())
+	}
+}
+
+func TestMediaRoutesDoNotExposeUnsupportedOperations(t *testing.T) {
+	mediaService := service.NewMediaUploadService()
+	mediaHandler := handler.NewMediaHandler(mediaService)
+	e := internal.Register(nil, nil, nil, mediaHandler)
+
+	routes := []string{
+		"/api/v1/media/upload/complete",
+		"/api/v1/media/download",
+		"/api/v1/media/delete",
+	}
+
+	for _, route := range routes {
+		t.Run(route, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, route, strings.NewReader("{}"))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			recorder := httptest.NewRecorder()
+
+			e.ServeHTTP(recorder, req)
+
+			if recorder.Code != http.StatusNotFound {
+				t.Fatalf("expected status %d, got %d: %s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+}
