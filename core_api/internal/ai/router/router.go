@@ -9,7 +9,6 @@ import (
 
 type AIRouter interface {
 	EditTileSetItem(*echox.Context, dto.EditTileSetItemRequest) (*dto.EditTileSetItemResponse, error)
-	EditObject(*echox.Context, dto.EditObjectRequest) (*dto.EditObjectResponse, error)
 	EditSceneryLayer(*echox.Context, dto.EditSceneryLayerRequest) (*dto.EditSceneryLayerResponse, error)
 	EditFrame(*echox.Context, dto.EditFrameRequest) (*dto.EditFrameResponse, error)
 	EditUIComponent(*echox.Context, dto.EditUIComponentRequest) (*dto.EditUIComponentResponse, error)
@@ -19,7 +18,6 @@ type AIRouter interface {
 func RegisterRoutes(e *echo.Group, r AIRouter) {
 	ai := e.Group("/ai")
 	ai.POST("/tile-set/item/edit", echox.WrapReq(r.EditTileSetItem))
-	ai.POST("/object/edit", echox.WrapReq(r.EditObject))
 	ai.POST("/scenery/layer/edit", echox.WrapReq(r.EditSceneryLayer))
 	ai.POST("/animation/frame/edit", echox.WrapReq(r.EditFrame))
 	ai.POST("/ui/component/edit", echox.WrapReq(r.EditUIComponent))

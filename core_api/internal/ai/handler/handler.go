@@ -22,13 +22,6 @@ func (h *AIHandler) EditTileSetItem(
 	return h.service.EditTileSetItem(c, &request)
 }
 
-func (h *AIHandler) EditObject(
-	c *echox.Context,
-	request dto.EditObjectRequest,
-) (*dto.EditObjectResponse, error) {
-	return h.service.EditObject(c, &request)
-}
-
 func (h *AIHandler) EditSceneryLayer(
 	c *echox.Context,
 	request dto.EditSceneryLayerRequest,
