@@ -16,7 +16,7 @@ func TestTaxonomyRoutesReturnPlaceholderResponses(t *testing.T) {
 	e := internal.Register(nil, nil, nil, nil, taxonomyHandler)
 
 	routes := []string{
-		"/api/v1/projects/42/assets/9/related",
+		"/api/v1/projects/42/assets/search?q=orchard&tags=hero&types=character",
 	}
 
 	for _, route := range routes {
@@ -54,6 +54,7 @@ func TestTaxonomyRoutesDoNotExposeInternalOperations(t *testing.T) {
 		{method: http.MethodGet, path: "/api/v1/taxonomy/assets/filter"},
 		{method: http.MethodGet, path: "/api/v1/taxonomy/assets/related-by-tags"},
 		{method: http.MethodGet, path: "/api/v1/taxonomy/assets/related"},
+		{method: http.MethodGet, path: "/api/v1/projects/42/assets/9/related"},
 		{method: http.MethodPost, path: "/api/v1/taxonomy/tags"},
 		{method: http.MethodPost, path: "/api/v1/taxonomy/assets/tags"},
 		{method: http.MethodDelete, path: "/api/v1/taxonomy/tags/1"},
@@ -84,9 +85,8 @@ func TestTaxonomyRoutesRejectInvalidIDs(t *testing.T) {
 	e := internal.Register(nil, nil, nil, nil, taxonomyHandler)
 
 	routes := []string{
-		"/api/v1/projects/0/assets/9/related",
-		"/api/v1/projects/42/assets/0/related",
-		"/api/v1/projects/42/assets/invalid/related",
+		"/api/v1/projects/0/assets/search",
+		"/api/v1/projects/invalid/assets/search",
 	}
 
 	for _, route := range routes {

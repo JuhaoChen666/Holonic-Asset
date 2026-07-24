@@ -8,14 +8,14 @@ import (
 )
 
 type TaxonomyRouter interface {
-	FindRelatedAssets(
+	SearchAssets(
 		c *echox.Context,
-		request dto.FindRelatedAssetsRequest,
+		request dto.SearchAssetsRequest,
 	) (*dto.AssetSearchResult, error)
 }
 
-// RegisterRoutes registers the public asset discovery routes.
+// RegisterRoutes registers the public asset search route.
 func RegisterRoutes(e *echo.Group, r TaxonomyRouter) {
 	assets := e.Group("/projects/:projectId/assets")
-	assets.GET("/:assetId/related", echox.WrapReq(r.FindRelatedAssets))
+	assets.GET("/search", echox.WrapReq(r.SearchAssets))
 }

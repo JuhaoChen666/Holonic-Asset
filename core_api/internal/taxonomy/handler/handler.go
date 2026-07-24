@@ -17,14 +17,14 @@ func NewTaxonomyHandler(assetDiscoveryService service.AssetDiscoveryService) *Ta
 	return &TaxonomyHandler{service: assetDiscoveryService}
 }
 
-func (h *TaxonomyHandler) FindRelatedAssets(
+func (h *TaxonomyHandler) SearchAssets(
 	c *echox.Context,
-	request dto.FindRelatedAssetsRequest,
+	request dto.SearchAssetsRequest,
 ) (*dto.AssetSearchResult, error) {
-	if request.ProjectID == 0 || request.AssetID == 0 {
+	if request.ProjectID == 0 {
 		return nil, echo.ErrBadRequest
 	}
-	return h.service.FindRelatedAssets(c, &request)
+	return h.service.SearchAssets(c, &request)
 }
 
 var _ router.TaxonomyRouter = (*TaxonomyHandler)(nil)
