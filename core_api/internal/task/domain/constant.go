@@ -4,10 +4,12 @@ type Status uint
 type TaskType string
 
 const (
-	StatusPending Status = iota
+	StatusWaiting Status = iota
+	StatusPending
 	StatusProcessing
 	StatusCompleted
 	StatusFailed
+	StatusCancelled
 )
 
 const (

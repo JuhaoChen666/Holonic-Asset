@@ -8,10 +8,9 @@ type Job interface {
 
 type Handler interface {
 	JobKind() string
-
 	Handle(ctx context.Context, payload []byte) error
 }
 
 type Publisher interface {
-	Publish(ctx context.Context, job Job) error
+	Publish(ctx context.Context, job Job) (int64, error)
 }
