@@ -26,6 +26,8 @@ type AssetDiscoveryService interface {
 	) (*dto.AssetSearchResult, error)
 }
 
+// assetDiscoveryService is empty because Taxonomy currently has only placeholder
+// behavior and, unlike implemented services, does not yet depend on a repository or provider.
 type assetDiscoveryService struct{}
 
 func NewAssetDiscoveryService() AssetDiscoveryService {
