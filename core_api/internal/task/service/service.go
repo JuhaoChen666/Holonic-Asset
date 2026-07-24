@@ -28,7 +28,7 @@ func NewTaskService(r repository.TaskRepository) *TaskServiceImpl {
 }
 
 func (s *TaskServiceImpl) Create(ctx context.Context, task *domain.Task) (uint, error) {
-	return s.TaskRepository.Create(ctx, task)
+	return s.TaskRepository.CreateWithOutbox(ctx, task)
 }
 
 func (s *TaskServiceImpl) ListByProjectID(ctx context.Context, projectID uint) ([]domain.Task, error) {

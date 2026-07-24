@@ -1,6 +1,14 @@
 package queue
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrDuplicateJob indicates that a job with identical unique arguments
+// already exists in the queue and was not re-inserted.
+// Publishers return this when unique-args deduplication prevents a duplicate.
+var ErrDuplicateJob = errors.New("queue: duplicate job (unique constraint)")
 
 type Job interface {
 	Kind() string

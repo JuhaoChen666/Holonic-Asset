@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"errors"
 	"log"
 
 	"github.com/1024XEngineer/Holonic-Asset/internal/task/repository"
@@ -18,36 +19,41 @@ func NewDispatcher(repo repository.TaskRepository, p queue.Publisher) *Dispatche
 }
 
 func (d *Dispatcher) Run(ctx context.Context, batchSize int) (int, error) {
-	tasks, err := d.repo.FetchUndispatched(ctx, batchSize)
+	records, err := d.repo.FetchPendingOutbox(ctx, batchSize)
 	if err != nil {
 		return 0, err
 	}
 
-	dispatched := 0
-	for i := range tasks {
-		t := &tasks[i]
-
-		job, err := BuildJob(t)
+	published := 0
+	for _, outbox := range records {
+		job, err := DeserializeJob(outbox.JobKind, []byte(outbox.Payload))
 		if err != nil {
-			log.Printf("task dispatcher: skip %d: %v", t.ID, err)
+			log.Printf("task dispatcher: deserialize outbox %d (%s): %v",
+				outbox.ID, outbox.JobKind, err)
 			continue
 		}
 
 		jobID, err := d.publisher.Publish(ctx, job)
 		if err != nil {
-			log.Printf("task dispatcher: publish %d (%s): %v", t.ID, job.Kind(), err)
+			if errors.Is(err, queue.ErrDuplicateJob) {
+				if err := d.repo.MarkOutboxPublished(ctx, outbox.ID, 0); err != nil {
+					log.Printf("task dispatcher: mark duplicate outbox %d: %v", outbox.ID, err)
+					continue
+				}
+				published++
+				continue
+			}
+			log.Printf("task dispatcher: publish outbox %d (%s): %v",
+				outbox.ID, outbox.JobKind, err)
 			continue
 		}
 
-		claimed, err := d.repo.Claim(ctx, t.ID, jobID)
-		if err != nil {
-			log.Printf("task dispatcher: claim %d: %v", t.ID, err)
+		if err := d.repo.MarkOutboxPublished(ctx, outbox.ID, jobID); err != nil {
+			log.Printf("task dispatcher: mark published outbox %d: %v", outbox.ID, err)
 			continue
 		}
-		if claimed {
-			dispatched++
-		}
+		published++
 	}
 
-	return dispatched, nil
+	return published, nil
 }

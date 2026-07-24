@@ -4,8 +4,7 @@ type Status uint
 type TaskType string
 
 const (
-	StatusWaiting Status = iota
-	StatusPending
+	StatusPending Status = iota
 	StatusProcessing
 	StatusCompleted
 	StatusFailed
@@ -28,4 +27,11 @@ const (
 	GenerateTileSet TaskType = "generateTileSet"
 	RegenerateItem  TaskType = "regenerateItem"
 	RegenerateTiles TaskType = "regenerateTiles"
+)
+
+type OutboxStatus uint
+
+const (
+	OutboxPending   OutboxStatus = 0 // waiting to be published to River
+	OutboxPublished OutboxStatus = 1 // successfully published to River
 )

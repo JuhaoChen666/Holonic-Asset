@@ -63,6 +63,9 @@ func (p *Publisher) Publish(ctx context.Context, job queue.Job) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("river: insert %q: %w", job.Kind(), err)
 	}
+	if res.UniqueSkippedAsDuplicate {
+		return 0, queue.ErrDuplicateJob
+	}
 	return res.Job.ID, nil
 }
 
