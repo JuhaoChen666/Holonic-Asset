@@ -1,0 +1,146 @@
+package domain
+
+import "encoding/json"
+
+// MediaID is an opaque reference owned by the media module.
+type MediaID string
+
+type MediaRef struct {
+	ID MediaID
+}
+
+type Size struct {
+	Width  uint
+	Height uint
+}
+
+// Money stores monetary values in microunits without floating-point loss.
+type Money struct {
+	Currency     string
+	AmountMicros int64
+}
+
+// Usage is the provider-neutral usage collected for one AI invocation.
+type Usage struct {
+	InputTokens         uint
+	OutputTokens        uint
+	GeneratedImages     uint
+	AudioDurationMillis uint64
+}
+
+type Invocation struct {
+	ID                string
+	ProviderRequestID string
+	Provider          string
+	Model             string
+	Usage             Usage
+	Cost              Money
+}
+
+type ProjectContext struct {
+	ProjectID      uint
+	Summary        string
+	Attributes     json.RawMessage
+	ReferenceMedia []MediaRef
+}
+
+type PromptRequest struct {
+	ProjectID   uint
+	Operation   string
+	Instruction string
+	Attributes  json.RawMessage
+}
+
+type Prompt struct {
+	System          string
+	User            string
+	TemplateVersion string
+}
+
+type StepType string
+
+type PlanConstraints struct {
+	AllowedStepTypes []StepType
+	AllowedMediaIDs  []MediaID
+	MaxSteps         uint
+	MaxRetries       uint
+	MaxCost          Money
+}
+
+type PlanRequest struct {
+	RequestID   string
+	ProjectID   uint
+	Instruction string
+	Constraints PlanConstraints
+}
+
+type ProposedStep struct {
+	Key         string
+	Type        StepType
+	DependsOn   []string
+	Parameters  json.RawMessage
+	MaxAttempts uint
+}
+
+// PlanProposal has no lifecycle of its own. The generation module validates
+// and converts it into its authoritative Plan and Step state.
+type PlanProposal struct {
+	Steps      []ProposedStep
+	Invocation Invocation
+}
+
+type GenerateImageRequest struct {
+	RequestID  string
+	ProjectID  uint
+	Prompt     PromptRequest
+	References []MediaRef
+	Size       Size
+}
+
+type EditImageRequest struct {
+	RequestID string
+	ProjectID uint
+	Prompt    PromptRequest
+	Targets   []MediaRef
+	Mask      *MediaRef
+}
+
+type ImageResult struct {
+	Outputs    []MediaRef
+	Invocation Invocation
+}
+
+type GenerateAudioRequest struct {
+	RequestID      string
+	ProjectID      uint
+	Prompt         PromptRequest
+	References     []MediaRef
+	DurationMillis uint64
+}
+
+type EditAudioRequest struct {
+	RequestID string
+	ProjectID uint
+	Prompt    PromptRequest
+	Targets   []MediaRef
+}
+
+type AudioResult struct {
+	Outputs    []MediaRef
+	Invocation Invocation
+}
+
+type ModelCapability string
+
+const (
+	ModelCapabilityPlanning        ModelCapability = "planning"
+	ModelCapabilityImageGeneration ModelCapability = "image_generation"
+	ModelCapabilityImageEditing    ModelCapability = "image_editing"
+	ModelCapabilityAudioGeneration ModelCapability = "audio_generation"
+	ModelCapabilityAudioEditing    ModelCapability = "audio_editing"
+)
+
+type ModelSelection struct {
+	Provider string
+	Model    string
+}
