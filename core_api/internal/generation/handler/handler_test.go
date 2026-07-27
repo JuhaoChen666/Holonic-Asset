@@ -95,21 +95,21 @@ func TestGetMapsGenerationDetail(t *testing.T) {
 			Request: domain.GenerationRequest{
 				Kind: domain.RequestKindGenerateCharacter,
 			},
-			Status: taskdomain.RunStatusRunning,
+			Status: taskdomain.StatusProcessing,
 		},
 		Steps: []domain.Step{{
 			ID:           8,
 			Type:         "generate_image",
 			Executor:     domain.StepExecutorAI,
 			Dependencies: []domain.StepID{6},
-			Status:       taskdomain.StepStatusRunning,
+			Status:       taskdomain.StatusProcessing,
 			Attempts:     1,
 			MaxAttempts:  3,
 		}},
 		Candidates: []domain.Candidate{{
 			ID:       9,
 			MediaIDs: []string{"media-1"},
-			Status:   taskdomain.CandidateStatusPending,
+			Status:   taskdomain.StatusPending,
 		}},
 	}}
 	generationHandler := handler.NewGenerationHandler(stub)
@@ -123,15 +123,15 @@ func TestGetMapsGenerationDetail(t *testing.T) {
 	}
 	if response.ID != 7 || response.ProjectID != 2 ||
 		response.Kind != domain.RequestKindGenerateCharacter ||
-		response.Status != taskdomain.RunStatusRunning {
+		response.Status != taskdomain.StatusProcessing {
 		t.Fatalf("unexpected run response: %+v", response)
 	}
 	if len(response.Steps) != 1 || response.Steps[0].ID != 8 ||
-		response.Steps[0].Status != taskdomain.StepStatusRunning {
+		response.Steps[0].Status != taskdomain.StatusProcessing {
 		t.Fatalf("unexpected steps response: %+v", response.Steps)
 	}
 	if len(response.Candidates) != 1 || response.Candidates[0].ID != 9 ||
-		response.Candidates[0].Status != taskdomain.CandidateStatusPending {
+		response.Candidates[0].Status != taskdomain.StatusPending {
 		t.Fatalf("unexpected candidates response: %+v", response.Candidates)
 	}
 }
