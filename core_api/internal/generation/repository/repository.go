@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/1024XEngineer/Holonic-Asset/internal/generation/domain"
-	taskdomain "github.com/1024XEngineer/Holonic-Asset/internal/task/domain"
 )
 
 // Reader defines generation queries that do not require a write transaction.
@@ -16,22 +15,26 @@ type Reader interface {
 	ListCandidates(ctx context.Context, runID domain.RunID) ([]domain.Candidate, error)
 }
 
-// Writer requires expected statuses for mutable lifecycle entities so delayed
-// retries cannot overwrite a terminal or otherwise incompatible state.
+// Writer persists generation-owned data only. Task state and queue operations
+// are handled through the task application service.
 type Writer interface {
 	CreateRun(ctx context.Context, run *domain.GenerationRun) error
-	UpdateRun(ctx context.Context, run *domain.GenerationRun, expectedStatus taskdomain.Status) (bool, error)
+	SetPlanningTask(ctx context.Context, runID domain.RunID, taskID uint) error
+	TransitionRun(
+		ctx context.Context,
+		runID domain.RunID,
+		from domain.RunLifecycle,
+		to domain.RunLifecycle,
+		failure *domain.Failure,
+	) (bool, error)
 
 	// CreatePlan persists the Plan and its initial Steps as one aggregate.
 	CreatePlan(ctx context.Context, plan *domain.Plan) error
-	UpdateStep(ctx context.Context, step *domain.Step, expectedStatus taskdomain.Status) (bool, error)
+	SetStepTask(ctx context.Context, stepID domain.StepID, taskID uint) error
+	SaveStepResult(ctx context.Context, stepID domain.StepID, result *domain.StepResult) error
 
 	CreateCandidate(ctx context.Context, candidate *domain.Candidate) error
-	UpdateCandidate(
-		ctx context.Context,
-		candidate *domain.Candidate,
-		expectedStatus taskdomain.Status,
-	) (bool, error)
+	ConfirmCandidate(ctx context.Context, runID domain.RunID, candidateID domain.CandidateID) (bool, error)
 }
 
 // Repository is the transaction-bound persistence contract.

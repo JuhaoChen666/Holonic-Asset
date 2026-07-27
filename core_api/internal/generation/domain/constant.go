@@ -2,6 +2,19 @@ package domain
 
 type StepExecutor string
 type RequestKind string
+type RunLifecycle string
+
+const (
+	RunLifecycleAccepted            RunLifecycle = "accepted"
+	RunLifecyclePlanning            RunLifecycle = "planning"
+	RunLifecyclePlanned             RunLifecycle = "planned"
+	RunLifecycleGenerating          RunLifecycle = "generating"
+	RunLifecyclePostProcessing      RunLifecycle = "post_processing"
+	RunLifecycleWaitingConfirmation RunLifecycle = "waiting_confirmation"
+	RunLifecycleCompleted           RunLifecycle = "completed"
+	RunLifecycleFailed              RunLifecycle = "failed"
+	RunLifecycleCancelled           RunLifecycle = "cancelled"
+)
 
 const (
 	StepExecutorAI          StepExecutor = "ai"

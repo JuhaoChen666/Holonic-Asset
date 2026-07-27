@@ -24,25 +24,33 @@ type GenerationRequest struct {
 }
 
 type Failure struct {
-	Code      string
-	Message   string
-	Retryable bool
+	Code    string
+	Message string
 }
 
 type GenerationRun struct {
-	ID        RunID
-	ProjectID uint
-	Request   GenerationRequest
-	Status    taskdomain.Status
-	PlanID    PlanID
-	Failure   *Failure
+	ID                   RunID
+	PlanningTaskID       *uint
+	ProjectID            uint
+	Request              GenerationRequest
+	PlanID               PlanID
+	Lifecycle            RunLifecycle
+	ConfirmedCandidateID *CandidateID
+	Failure              *Failure
 }
 
-// GenerationDetail is the read model returned for one generation lifecycle.
+// GenerationDetail is assembled from generation records and task state.
 type GenerationDetail struct {
 	Run        GenerationRun
-	Steps      []Step
+	Steps      []StepDetail
 	Candidates []Candidate
+}
+
+// StepDetail carries task-owned execution state without persisting a duplicate
+// status in the generation module.
+type StepDetail struct {
+	Step       Step
+	TaskStatus *taskdomain.Status
 }
 
 type Plan struct {
@@ -53,6 +61,7 @@ type Plan struct {
 
 type Step struct {
 	ID           StepID
+	TaskID       *uint
 	RunID        RunID
 	PlanID       PlanID
 	Key          string
@@ -60,10 +69,6 @@ type Step struct {
 	Executor     StepExecutor
 	Dependencies []StepID
 	Parameters   json.RawMessage
-	Status       taskdomain.Status
-	Attempts     uint
-	MaxAttempts  uint
-	Failure      *Failure
 }
 
 type StepResult struct {
@@ -75,7 +80,6 @@ type Candidate struct {
 	ID       CandidateID
 	RunID    RunID
 	MediaIDs []string
-	Status   taskdomain.Status
 }
 
 // ConfirmCandidateCommand contains the asset target required to apply an
