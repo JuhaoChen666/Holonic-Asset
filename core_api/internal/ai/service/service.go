@@ -41,9 +41,5 @@ type ModelRouter interface {
 }
 
 type MeteringService interface {
-	Collect(ctx context.Context, invocation *domain.Invocation) error
-}
-
-type CostCalculator interface {
-	Calculate(ctx context.Context, selection domain.ModelSelection, usage domain.Usage) (domain.Money, error)
+	Collect(ctx context.Context, usage domain.Usage) error
 }

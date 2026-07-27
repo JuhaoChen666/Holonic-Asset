@@ -14,27 +14,12 @@ type Size struct {
 	Height uint
 }
 
-// Money stores monetary values in microunits without floating-point loss.
-type Money struct {
-	Currency     string
-	AmountMicros int64
-}
-
-// Usage is the provider-neutral usage collected for one AI invocation.
+// Usage is the provider-neutral usage collected for one AI provider call.
 type Usage struct {
 	InputTokens         uint
 	OutputTokens        uint
 	GeneratedImages     uint
 	AudioDurationMillis uint64
-}
-
-type Invocation struct {
-	ID                string
-	ProviderRequestID string
-	Provider          string
-	Model             string
-	Usage             Usage
-	Cost              Money
 }
 
 type ProjectContext struct {
@@ -64,7 +49,6 @@ type PlanConstraints struct {
 	AllowedMediaIDs  []MediaID
 	MaxSteps         uint
 	MaxRetries       uint
-	MaxCost          Money
 }
 
 type PlanRequest struct {
@@ -85,8 +69,8 @@ type ProposedStep struct {
 // PlanProposal has no lifecycle of its own. The generation module validates
 // and converts it into its authoritative Plan and Step state.
 type PlanProposal struct {
-	Steps      []ProposedStep
-	Invocation Invocation
+	Steps []ProposedStep
+	Usage Usage
 }
 
 type GenerateImageRequest struct {
@@ -106,8 +90,8 @@ type EditImageRequest struct {
 }
 
 type ImageResult struct {
-	Outputs    []MediaRef
-	Invocation Invocation
+	Outputs []MediaRef
+	Usage   Usage
 }
 
 type GenerateAudioRequest struct {
@@ -126,8 +110,8 @@ type EditAudioRequest struct {
 }
 
 type AudioResult struct {
-	Outputs    []MediaRef
-	Invocation Invocation
+	Outputs []MediaRef
+	Usage   Usage
 }
 
 type ModelCapability string

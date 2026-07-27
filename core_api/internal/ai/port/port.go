@@ -31,5 +31,5 @@ type MediaGateway interface {
 }
 
 type UsageRepository interface {
-	SaveInvocation(ctx context.Context, invocation *domain.Invocation) error
+	SaveUsage(ctx context.Context, usage domain.Usage) error
 }
