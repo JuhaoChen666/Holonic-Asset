@@ -9,7 +9,7 @@ import (
 // RequestService exposes the generation lifecycle use cases used by transports.
 type RequestService interface {
 	Create(ctx context.Context, request *domain.GenerationRequest) (domain.RunID, error)
-	Get(ctx context.Context, runID domain.RunID) (*domain.GenerationRun, error)
+	Get(ctx context.Context, runID domain.RunID) (*domain.GenerationDetail, error)
 	Cancel(ctx context.Context, runID domain.RunID) error
 	ConfirmCandidate(ctx context.Context, runID domain.RunID, candidateID domain.CandidateID) error
 }
@@ -44,8 +44,8 @@ func (*generationService) Create(context.Context, *domain.GenerationRequest) (do
 	return 0, nil
 }
 
-func (*generationService) Get(context.Context, domain.RunID) (*domain.GenerationRun, error) {
-	return &domain.GenerationRun{}, nil
+func (*generationService) Get(context.Context, domain.RunID) (*domain.GenerationDetail, error) {
+	return &domain.GenerationDetail{}, nil
 }
 
 func (*generationService) Cancel(context.Context, domain.RunID) error {
