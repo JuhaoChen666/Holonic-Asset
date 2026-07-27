@@ -2,6 +2,9 @@ package domain
 
 type Status uint
 type TaskType string
+type RunStatus string
+type StepStatus string
+type CandidateStatus string
 
 const (
 	StatusPending Status = iota
@@ -9,6 +12,35 @@ const (
 	StatusCompleted
 	StatusFailed
 	StatusCancelled
+)
+
+const (
+	RunStatusPending             RunStatus = "pending"
+	RunStatusPlanning            RunStatus = "planning"
+	RunStatusPlanned             RunStatus = "planned"
+	RunStatusRunning             RunStatus = "running"
+	RunStatusPostProcessing      RunStatus = "post_processing"
+	RunStatusWaitingConfirmation RunStatus = "waiting_confirmation"
+	RunStatusCompleted           RunStatus = "completed"
+	RunStatusFailed              RunStatus = "failed"
+	RunStatusCancelled           RunStatus = "cancelled"
+)
+
+const (
+	StepStatusPending   StepStatus = "pending"
+	StepStatusReady     StepStatus = "ready"
+	StepStatusRunning   StepStatus = "running"
+	StepStatusSucceeded StepStatus = "succeeded"
+	StepStatusFailed    StepStatus = "failed"
+	StepStatusRetryWait StepStatus = "retry_wait"
+	StepStatusCancelled StepStatus = "cancelled"
+	StepStatusSkipped   StepStatus = "skipped"
+)
+
+const (
+	CandidateStatusPending   CandidateStatus = "pending"
+	CandidateStatusConfirmed CandidateStatus = "confirmed"
+	CandidateStatusRejected  CandidateStatus = "rejected"
 )
 
 const (
