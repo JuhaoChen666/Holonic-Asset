@@ -34,6 +34,13 @@ type GenerationRun struct {
 	Failure   *Failure
 }
 
+// GenerationDetail is the read model returned for one generation lifecycle.
+type GenerationDetail struct {
+	Run        GenerationRun
+	Steps      []Step
+	Candidates []Candidate
+}
+
 type Plan struct {
 	ID    PlanID
 	RunID RunID
@@ -65,4 +72,16 @@ type Candidate struct {
 	RunID    RunID
 	MediaIDs []string
 	Status   CandidateStatus
+}
+
+// ConfirmCandidateCommand contains the asset target required to apply an
+// accepted candidate without making the asset module query generation state.
+type ConfirmCandidateCommand struct {
+	RunID                  RunID
+	CandidateID            CandidateID
+	ProjectID              uint
+	AssetID                uint
+	Kind                   RequestKind
+	TargetAssetResourceIDs []uint
+	MediaIDs               []string
 }
