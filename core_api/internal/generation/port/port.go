@@ -6,20 +6,14 @@ import (
 
 	"github.com/1024XEngineer/Holonic-Asset/internal/generation/domain"
 	"github.com/1024XEngineer/Holonic-Asset/internal/generation/repository"
+	taskservice "github.com/1024XEngineer/Holonic-Asset/internal/task/service"
 )
 
-// Scheduler hides the task library and River job identifiers from generation.
-type Scheduler interface {
-	SchedulePlanning(ctx context.Context, runID domain.RunID) error
-	ScheduleStep(ctx context.Context, runID domain.RunID, stepID domain.StepID, executor domain.StepExecutor) error
-	CancelRun(ctx context.Context, runID domain.RunID) error
-}
-
-// Transaction exposes repository and scheduling operations bound to the same
-// database transaction.
+// Transaction exposes generation persistence and module services bound to the
+// same database transaction.
 type Transaction interface {
 	Repository() repository.Repository
-	Scheduler() Scheduler
+	TaskService() taskservice.TaskService
 	CandidateConfirmer() CandidateConfirmer
 }
 

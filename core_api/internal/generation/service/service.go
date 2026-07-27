@@ -35,7 +35,7 @@ type GenerationService interface {
 }
 
 // generationService is the application-service skeleton. Persistence, planning,
-// scheduling, retry, and state-transition behavior are intentionally deferred.
+// task coordination, retry, and state-transition behavior are intentionally deferred.
 type generationService struct {
 	reader     repository.Reader
 	unitOfWork port.UnitOfWork
