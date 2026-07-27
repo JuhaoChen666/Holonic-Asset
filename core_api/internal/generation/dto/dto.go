@@ -30,24 +30,22 @@ type StepResponse struct {
 	Type         string              `json:"type"`
 	Executor     domain.StepExecutor `json:"executor"`
 	Dependencies []domain.StepID     `json:"dependencies"`
-	Status       taskdomain.Status   `json:"status"`
-	Attempts     uint                `json:"attempts"`
-	MaxAttempts  uint                `json:"maxAttempts"`
+	TaskStatus   *taskdomain.Status  `json:"taskStatus,omitempty"`
 }
 
 type CandidateResponse struct {
 	ID       domain.CandidateID `json:"id"`
 	MediaIDs []string           `json:"mediaIds"`
-	Status   taskdomain.Status  `json:"status"`
 }
 
 type GetGenerationResponse struct {
-	ID         domain.RunID        `json:"id"`
-	ProjectID  uint                `json:"projectId"`
-	Kind       domain.RequestKind  `json:"kind"`
-	Status     taskdomain.Status   `json:"status"`
-	Steps      []StepResponse      `json:"steps"`
-	Candidates []CandidateResponse `json:"candidates"`
+	ID                   domain.RunID        `json:"id"`
+	ProjectID            uint                `json:"projectId"`
+	Kind                 domain.RequestKind  `json:"kind"`
+	Lifecycle            domain.RunLifecycle `json:"lifecycle"`
+	ConfirmedCandidateID *domain.CandidateID `json:"confirmedCandidateId,omitempty"`
+	Steps                []StepResponse      `json:"steps"`
+	Candidates           []CandidateResponse `json:"candidates"`
 }
 
 type CancelGenerationRequest struct {

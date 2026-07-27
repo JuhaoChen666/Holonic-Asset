@@ -43,15 +43,14 @@ func (h *GenerationHandler) Get(
 
 	steps := make([]dto.StepResponse, len(detail.Steps))
 	for i := range detail.Steps {
-		step := detail.Steps[i]
+		stepDetail := detail.Steps[i]
+		step := stepDetail.Step
 		steps[i] = dto.StepResponse{
 			ID:           step.ID,
 			Type:         step.Type,
 			Executor:     step.Executor,
 			Dependencies: step.Dependencies,
-			Status:       step.Status,
-			Attempts:     step.Attempts,
-			MaxAttempts:  step.MaxAttempts,
+			TaskStatus:   stepDetail.TaskStatus,
 		}
 	}
 
@@ -61,17 +60,17 @@ func (h *GenerationHandler) Get(
 		candidates[i] = dto.CandidateResponse{
 			ID:       candidate.ID,
 			MediaIDs: candidate.MediaIDs,
-			Status:   candidate.Status,
 		}
 	}
 
 	return dto.GetGenerationResponse{
-		ID:         detail.Run.ID,
-		ProjectID:  detail.Run.ProjectID,
-		Kind:       detail.Run.Request.Kind,
-		Status:     detail.Run.Status,
-		Steps:      steps,
-		Candidates: candidates,
+		ID:                   detail.Run.ID,
+		ProjectID:            detail.Run.ProjectID,
+		Kind:                 detail.Run.Request.Kind,
+		Lifecycle:            detail.Run.Lifecycle,
+		ConfirmedCandidateID: detail.Run.ConfirmedCandidateID,
+		Steps:                steps,
+		Candidates:           candidates,
 	}, nil
 }
 
