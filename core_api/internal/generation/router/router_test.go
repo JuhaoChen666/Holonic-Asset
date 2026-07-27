@@ -9,43 +9,66 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/1024XEngineer/Holonic-Asset/internal"
-	"github.com/1024XEngineer/Holonic-Asset/internal/generation/handler"
-	"github.com/1024XEngineer/Holonic-Asset/internal/generation/service"
+	"github.com/1024XEngineer/Holonic-Asset/internal/generation/dto"
+	"github.com/1024XEngineer/Holonic-Asset/pkg/echox"
 )
 
-func TestGenerationRoutesReturnPlaceholderResponses(t *testing.T) {
-	generationService := service.NewGenerationService()
-	generationHandler := handler.NewGenerationHandler(generationService)
-	e := internal.Register(nil, nil, generationHandler, nil, nil)
+type generationRouterStub struct{}
+
+func (*generationRouterStub) Create(
+	*echox.Context,
+	dto.CreateGenerationRequest,
+) (dto.CreateGenerationResponse, error) {
+	return dto.CreateGenerationResponse{}, nil
+}
+
+func (*generationRouterStub) Get(
+	*echox.Context,
+	dto.GetGenerationRequest,
+) (dto.GetGenerationResponse, error) {
+	return dto.GetGenerationResponse{}, nil
+}
+
+func (*generationRouterStub) Cancel(
+	*echox.Context,
+	dto.CancelGenerationRequest,
+) (dto.CancelGenerationResponse, error) {
+	return dto.CancelGenerationResponse{}, nil
+}
+
+func (*generationRouterStub) ConfirmCandidate(
+	*echox.Context,
+	dto.ConfirmCandidateRequest,
+) (dto.ConfirmCandidateResponse, error) {
+	return dto.ConfirmCandidateResponse{}, nil
+}
+
+func TestGenerationRoutesAreRegistered(t *testing.T) {
+	e := internal.Register(nil, nil, &generationRouterStub{}, nil, nil)
 
 	tests := []struct {
 		method string
 		path   string
 		body   string
-		want   string
 	}{
 		{
 			method: http.MethodPost,
 			path:   "/api/v1/projects/42/generation-runs",
 			body:   `{"kind":"generate_character","prompt":"hero"}`,
-			want:   `{"generationRunId":0}` + "\n",
 		},
 		{
 			method: http.MethodGet,
 			path:   "/api/v1/generation-runs/7",
-			want:   `{"id":0,"projectId":0,"kind":"","status":"","steps":null,"candidates":null}` + "\n",
 		},
 		{
 			method: http.MethodPost,
 			path:   "/api/v1/generation-runs/7/cancel",
 			body:   `{}`,
-			want:   `{"cancelled":false}` + "\n",
 		},
 		{
 			method: http.MethodPost,
 			path:   "/api/v1/generation-runs/7/candidates/9/confirm",
 			body:   `{}`,
-			want:   `{"confirmed":false}` + "\n",
 		},
 	}
 
@@ -60,17 +83,12 @@ func TestGenerationRoutesReturnPlaceholderResponses(t *testing.T) {
 			if recorder.Code != http.StatusOK {
 				t.Fatalf("expected status %d, got %d: %s", http.StatusOK, recorder.Code, recorder.Body.String())
 			}
-			if recorder.Body.String() != test.want {
-				t.Fatalf("unexpected placeholder response: %s", recorder.Body.String())
-			}
 		})
 	}
 }
 
 func TestAIRoutesAreNotExposed(t *testing.T) {
-	generationService := service.NewGenerationService()
-	generationHandler := handler.NewGenerationHandler(generationService)
-	e := internal.Register(nil, nil, generationHandler, nil, nil)
+	e := internal.Register(nil, nil, &generationRouterStub{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/ai/tile-set/item/edit", strings.NewReader(`{}`))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
