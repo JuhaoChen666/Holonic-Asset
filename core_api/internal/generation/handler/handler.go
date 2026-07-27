@@ -36,8 +36,43 @@ func (h *GenerationHandler) Get(
 	ctx *echox.Context,
 	request dto.GetGenerationRequest,
 ) (dto.GetGenerationResponse, error) {
-	_, err := h.service.Get(ctx, request.GenerationRunID)
-	return dto.GetGenerationResponse{}, err
+	detail, err := h.service.Get(ctx, request.GenerationRunID)
+	if err != nil {
+		return dto.GetGenerationResponse{}, err
+	}
+
+	steps := make([]dto.StepResponse, len(detail.Steps))
+	for i := range detail.Steps {
+		step := detail.Steps[i]
+		steps[i] = dto.StepResponse{
+			ID:           step.ID,
+			Type:         step.Type,
+			Executor:     step.Executor,
+			Dependencies: step.Dependencies,
+			Status:       step.Status,
+			Attempts:     step.Attempts,
+			MaxAttempts:  step.MaxAttempts,
+		}
+	}
+
+	candidates := make([]dto.CandidateResponse, len(detail.Candidates))
+	for i := range detail.Candidates {
+		candidate := detail.Candidates[i]
+		candidates[i] = dto.CandidateResponse{
+			ID:       candidate.ID,
+			MediaIDs: candidate.MediaIDs,
+			Status:   candidate.Status,
+		}
+	}
+
+	return dto.GetGenerationResponse{
+		ID:         detail.Run.ID,
+		ProjectID:  detail.Run.ProjectID,
+		Kind:       detail.Run.Request.Kind,
+		Status:     detail.Run.Status,
+		Steps:      steps,
+		Candidates: candidates,
+	}, nil
 }
 
 func (h *GenerationHandler) Cancel(
