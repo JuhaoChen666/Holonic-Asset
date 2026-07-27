@@ -80,7 +80,7 @@ func (h *GenerationHandler) Cancel(
 	request dto.CancelGenerationRequest,
 ) (dto.CancelGenerationResponse, error) {
 	err := h.service.Cancel(ctx, request.GenerationRunID)
-	return dto.CancelGenerationResponse{}, err
+	return dto.CancelGenerationResponse{Cancelled: err == nil}, err
 }
 
 func (h *GenerationHandler) ConfirmCandidate(
@@ -88,7 +88,7 @@ func (h *GenerationHandler) ConfirmCandidate(
 	request dto.ConfirmCandidateRequest,
 ) (dto.ConfirmCandidateResponse, error) {
 	err := h.service.ConfirmCandidate(ctx, request.GenerationRunID, request.CandidateID)
-	return dto.ConfirmCandidateResponse{}, err
+	return dto.ConfirmCandidateResponse{Confirmed: err == nil}, err
 }
 
 var _ router.GenerationRouter = (*GenerationHandler)(nil)
