@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/1024XEngineer/Holonic-Asset/internal/generation/domain"
+	"github.com/1024XEngineer/Holonic-Asset/internal/task/domain"
 )
 
 func TestRunStatusContract(t *testing.T) {
@@ -60,5 +60,22 @@ func TestStepStatusContract(t *testing.T) {
 
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected step status contract: %v", got)
+	}
+}
+
+func TestCandidateStatusContract(t *testing.T) {
+	got := []domain.CandidateStatus{
+		domain.CandidateStatusPending,
+		domain.CandidateStatusConfirmed,
+		domain.CandidateStatusRejected,
+	}
+	want := []domain.CandidateStatus{
+		"pending",
+		"confirmed",
+		"rejected",
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected candidate status contract: %v", got)
 	}
 }
