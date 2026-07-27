@@ -14,6 +14,7 @@ import (
 	"github.com/1024XEngineer/Holonic-Asset/internal/generation/domain"
 	"github.com/1024XEngineer/Holonic-Asset/internal/generation/dto"
 	"github.com/1024XEngineer/Holonic-Asset/internal/generation/handler"
+	taskdomain "github.com/1024XEngineer/Holonic-Asset/internal/task/domain"
 	"github.com/1024XEngineer/Holonic-Asset/pkg/echox"
 )
 
@@ -94,21 +95,21 @@ func TestGetMapsGenerationDetail(t *testing.T) {
 			Request: domain.GenerationRequest{
 				Kind: domain.RequestKindGenerateCharacter,
 			},
-			Status: domain.RunStatusRunning,
+			Status: taskdomain.RunStatusRunning,
 		},
 		Steps: []domain.Step{{
 			ID:           8,
 			Type:         "generate_image",
 			Executor:     domain.StepExecutorAI,
 			Dependencies: []domain.StepID{6},
-			Status:       domain.StepStatusRunning,
+			Status:       taskdomain.StepStatusRunning,
 			Attempts:     1,
 			MaxAttempts:  3,
 		}},
 		Candidates: []domain.Candidate{{
 			ID:       9,
 			MediaIDs: []string{"media-1"},
-			Status:   domain.CandidateStatusPending,
+			Status:   taskdomain.CandidateStatusPending,
 		}},
 	}}
 	generationHandler := handler.NewGenerationHandler(stub)
@@ -122,15 +123,15 @@ func TestGetMapsGenerationDetail(t *testing.T) {
 	}
 	if response.ID != 7 || response.ProjectID != 2 ||
 		response.Kind != domain.RequestKindGenerateCharacter ||
-		response.Status != domain.RunStatusRunning {
+		response.Status != taskdomain.RunStatusRunning {
 		t.Fatalf("unexpected run response: %+v", response)
 	}
 	if len(response.Steps) != 1 || response.Steps[0].ID != 8 ||
-		response.Steps[0].Status != domain.StepStatusRunning {
+		response.Steps[0].Status != taskdomain.StepStatusRunning {
 		t.Fatalf("unexpected steps response: %+v", response.Steps)
 	}
 	if len(response.Candidates) != 1 || response.Candidates[0].ID != 9 ||
-		response.Candidates[0].Status != domain.CandidateStatusPending {
+		response.Candidates[0].Status != taskdomain.CandidateStatusPending {
 		t.Fatalf("unexpected candidates response: %+v", response.Candidates)
 	}
 }
