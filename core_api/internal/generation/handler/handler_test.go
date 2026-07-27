@@ -88,28 +88,30 @@ func TestCreateMapsTransportRequest(t *testing.T) {
 }
 
 func TestGetMapsGenerationDetail(t *testing.T) {
+	confirmedCandidateID := domain.CandidateID(9)
+	taskStatus := taskdomain.StatusProcessing
 	stub := &requestServiceStub{detail: &domain.GenerationDetail{
 		Run: domain.GenerationRun{
-			ID:        7,
-			ProjectID: 2,
+			ID:                   7,
+			ProjectID:            2,
+			Lifecycle:            domain.RunLifecycleWaitingConfirmation,
+			ConfirmedCandidateID: &confirmedCandidateID,
 			Request: domain.GenerationRequest{
 				Kind: domain.RequestKindGenerateCharacter,
 			},
-			Status: taskdomain.StatusProcessing,
 		},
-		Steps: []domain.Step{{
-			ID:           8,
-			Type:         "generate_image",
-			Executor:     domain.StepExecutorAI,
-			Dependencies: []domain.StepID{6},
-			Status:       taskdomain.StatusProcessing,
-			Attempts:     1,
-			MaxAttempts:  3,
+		Steps: []domain.StepDetail{{
+			Step: domain.Step{
+				ID:           8,
+				Type:         "generate_image",
+				Executor:     domain.StepExecutorAI,
+				Dependencies: []domain.StepID{6},
+			},
+			TaskStatus: &taskStatus,
 		}},
 		Candidates: []domain.Candidate{{
 			ID:       9,
 			MediaIDs: []string{"media-1"},
-			Status:   taskdomain.StatusPending,
 		}},
 	}}
 	generationHandler := handler.NewGenerationHandler(stub)
@@ -123,15 +125,16 @@ func TestGetMapsGenerationDetail(t *testing.T) {
 	}
 	if response.ID != 7 || response.ProjectID != 2 ||
 		response.Kind != domain.RequestKindGenerateCharacter ||
-		response.Status != taskdomain.StatusProcessing {
+		response.Lifecycle != domain.RunLifecycleWaitingConfirmation {
 		t.Fatalf("unexpected run response: %+v", response)
 	}
 	if len(response.Steps) != 1 || response.Steps[0].ID != 8 ||
-		response.Steps[0].Status != taskdomain.StatusProcessing {
+		response.Steps[0].TaskStatus == nil ||
+		*response.Steps[0].TaskStatus != taskdomain.StatusProcessing {
 		t.Fatalf("unexpected steps response: %+v", response.Steps)
 	}
 	if len(response.Candidates) != 1 || response.Candidates[0].ID != 9 ||
-		response.Candidates[0].Status != taskdomain.StatusPending {
+		response.ConfirmedCandidateID == nil || *response.ConfirmedCandidateID != 9 {
 		t.Fatalf("unexpected candidates response: %+v", response.Candidates)
 	}
 }
