@@ -4,6 +4,7 @@ package port
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/1024XEngineer/Holonic-Asset/internal/ai/domain"
 )
@@ -12,10 +13,9 @@ type ProjectContextReader interface {
 	GetProjectContext(ctx context.Context, projectID uint) (*domain.ProjectContext, error)
 }
 
-type MediaSource struct {
-	Body        io.ReadCloser
-	ContentType string
-	Size        int64
+type MediaAccess struct {
+	URL       string
+	ExpiresAt time.Time
 }
 
 type MediaImport struct {
@@ -26,7 +26,7 @@ type MediaImport struct {
 
 // MediaGateway resolves stable media references and imports provider outputs.
 type MediaGateway interface {
-	Open(ctx context.Context, ref domain.MediaRef) (*MediaSource, error)
+	CreateAccess(ctx context.Context, ref domain.MediaRef) (*MediaAccess, error)
 	Import(ctx context.Context, request *MediaImport) (*domain.MediaRef, error)
 }
 
