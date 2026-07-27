@@ -27,7 +27,7 @@ func TestGenerationRoutesReturnPlaceholderResponses(t *testing.T) {
 		{
 			method: http.MethodPost,
 			path:   "/api/v1/projects/42/generation-runs",
-			body:   `{"kind":"generate_character","instruction":"hero"}`,
+			body:   `{"kind":"generate_character","prompt":"hero"}`,
 			want:   `{"generationRunId":0}` + "\n",
 		},
 		{
