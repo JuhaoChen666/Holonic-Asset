@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/1024XEngineer/Holonic-Asset/internal/generation/domain"
+	"github.com/1024XEngineer/Holonic-Asset/internal/generation/port"
+	"github.com/1024XEngineer/Holonic-Asset/internal/generation/repository"
 )
 
 // RequestService exposes the generation lifecycle use cases used by transports.
@@ -34,10 +36,19 @@ type GenerationService interface {
 
 // generationService is the application-service skeleton. Persistence, planning,
 // scheduling, retry, and state-transition behavior are intentionally deferred.
-type generationService struct{}
+type generationService struct {
+	reader     repository.Reader
+	unitOfWork port.UnitOfWork
+}
 
-func NewGenerationService() GenerationService {
-	return &generationService{}
+func NewGenerationService(
+	reader repository.Reader,
+	unitOfWork port.UnitOfWork,
+) GenerationService {
+	return &generationService{
+		reader:     reader,
+		unitOfWork: unitOfWork,
+	}
 }
 
 func (*generationService) Create(context.Context, *domain.GenerationRequest) (domain.RunID, error) {
