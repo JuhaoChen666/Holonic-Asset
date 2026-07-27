@@ -20,17 +20,17 @@ type Reader interface {
 // retries cannot overwrite a terminal or otherwise incompatible state.
 type Writer interface {
 	CreateRun(ctx context.Context, run *domain.GenerationRun) error
-	UpdateRun(ctx context.Context, run *domain.GenerationRun, expectedStatus taskdomain.RunStatus) (bool, error)
+	UpdateRun(ctx context.Context, run *domain.GenerationRun, expectedStatus taskdomain.Status) (bool, error)
 
 	// CreatePlan persists the Plan and its initial Steps as one aggregate.
 	CreatePlan(ctx context.Context, plan *domain.Plan) error
-	UpdateStep(ctx context.Context, step *domain.Step, expectedStatus taskdomain.StepStatus) (bool, error)
+	UpdateStep(ctx context.Context, step *domain.Step, expectedStatus taskdomain.Status) (bool, error)
 
 	CreateCandidate(ctx context.Context, candidate *domain.Candidate) error
 	UpdateCandidate(
 		ctx context.Context,
 		candidate *domain.Candidate,
-		expectedStatus taskdomain.CandidateStatus,
+		expectedStatus taskdomain.Status,
 	) (bool, error)
 }
 

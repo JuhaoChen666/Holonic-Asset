@@ -33,7 +33,7 @@ type GenerationRun struct {
 	ID        RunID
 	ProjectID uint
 	Request   GenerationRequest
-	Status    taskdomain.RunStatus
+	Status    taskdomain.Status
 	PlanID    PlanID
 	Failure   *Failure
 }
@@ -60,7 +60,7 @@ type Step struct {
 	Executor     StepExecutor
 	Dependencies []StepID
 	Parameters   json.RawMessage
-	Status       taskdomain.StepStatus
+	Status       taskdomain.Status
 	Attempts     uint
 	MaxAttempts  uint
 	Failure      *Failure
@@ -75,7 +75,7 @@ type Candidate struct {
 	ID       CandidateID
 	RunID    RunID
 	MediaIDs []string
-	Status   taskdomain.CandidateStatus
+	Status   taskdomain.Status
 }
 
 // ConfirmCandidateCommand contains the asset target required to apply an
