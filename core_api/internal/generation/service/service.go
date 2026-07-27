@@ -6,6 +6,7 @@ import (
 	"github.com/1024XEngineer/Holonic-Asset/internal/generation/domain"
 	"github.com/1024XEngineer/Holonic-Asset/internal/generation/port"
 	"github.com/1024XEngineer/Holonic-Asset/internal/generation/repository"
+	taskservice "github.com/1024XEngineer/Holonic-Asset/internal/task/service"
 )
 
 // RequestService exposes the generation lifecycle use cases used by transports.
@@ -21,33 +22,35 @@ type PlanningService interface {
 	Plan(ctx context.Context, runID domain.RunID) (*domain.Plan, error)
 }
 
-// StepService is called by job handlers to maintain authoritative Step state.
-type StepService interface {
-	Start(ctx context.Context, stepID domain.StepID) (*domain.Step, error)
-	Complete(ctx context.Context, stepID domain.StepID, result *domain.StepResult) error
-	Fail(ctx context.Context, stepID domain.StepID, failure *domain.Failure) error
+// StepResultService records generation-owned outputs. Task handlers maintain
+// execution status, attempts, retry, and cancellation.
+type StepResultService interface {
+	RecordResult(ctx context.Context, stepID domain.StepID, result *domain.StepResult) error
 }
 
 type GenerationService interface {
 	RequestService
 	PlanningService
-	StepService
+	StepResultService
 }
 
 // generationService is the application-service skeleton. Persistence, planning,
-// task coordination, retry, and state-transition behavior are intentionally deferred.
+// task coordination, and business lifecycle transitions are intentionally deferred.
 type generationService struct {
 	reader     repository.Reader
 	unitOfWork port.UnitOfWork
+	tasks      taskservice.TaskService
 }
 
 func NewGenerationService(
 	reader repository.Reader,
 	unitOfWork port.UnitOfWork,
+	tasks taskservice.TaskService,
 ) GenerationService {
 	return &generationService{
 		reader:     reader,
 		unitOfWork: unitOfWork,
+		tasks:      tasks,
 	}
 }
 
@@ -71,15 +74,7 @@ func (*generationService) Plan(context.Context, domain.RunID) (*domain.Plan, err
 	return &domain.Plan{}, nil
 }
 
-func (*generationService) Start(context.Context, domain.StepID) (*domain.Step, error) {
-	return &domain.Step{}, nil
-}
-
-func (*generationService) Complete(context.Context, domain.StepID, *domain.StepResult) error {
-	return nil
-}
-
-func (*generationService) Fail(context.Context, domain.StepID, *domain.Failure) error {
+func (*generationService) RecordResult(context.Context, domain.StepID, *domain.StepResult) error {
 	return nil
 }
 

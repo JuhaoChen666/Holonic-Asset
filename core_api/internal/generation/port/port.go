@@ -6,14 +6,12 @@ import (
 
 	"github.com/1024XEngineer/Holonic-Asset/internal/generation/domain"
 	"github.com/1024XEngineer/Holonic-Asset/internal/generation/repository"
-	taskservice "github.com/1024XEngineer/Holonic-Asset/internal/task/service"
 )
 
 // Transaction exposes generation persistence and module services bound to the
 // same database transaction.
 type Transaction interface {
 	Repository() repository.Repository
-	TaskService() taskservice.TaskService
 	CandidateConfirmer() CandidateConfirmer
 }
 

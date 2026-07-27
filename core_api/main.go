@@ -21,7 +21,7 @@ func main() {
 	projectService := projectservice.NewProjectService(projectRepository)
 	projectHandler := projecthandler.NewProjectHandler(projectService)
 
-	generationService := generationservice.NewGenerationService(nil, nil)
+	generationService := generationservice.NewGenerationService(nil, nil, nil)
 	generationHandler := generationhandler.NewGenerationHandler(generationService)
 
 	mediaService := mediaservice.NewMediaService()
