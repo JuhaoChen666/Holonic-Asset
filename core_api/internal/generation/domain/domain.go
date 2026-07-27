@@ -1,6 +1,10 @@
 package domain
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	taskdomain "github.com/1024XEngineer/Holonic-Asset/internal/task/domain"
+)
 
 type RunID uint
 type PlanID uint
@@ -29,7 +33,7 @@ type GenerationRun struct {
 	ID        RunID
 	ProjectID uint
 	Request   GenerationRequest
-	Status    RunStatus
+	Status    taskdomain.RunStatus
 	PlanID    PlanID
 	Failure   *Failure
 }
@@ -56,7 +60,7 @@ type Step struct {
 	Executor     StepExecutor
 	Dependencies []StepID
 	Parameters   json.RawMessage
-	Status       StepStatus
+	Status       taskdomain.StepStatus
 	Attempts     uint
 	MaxAttempts  uint
 	Failure      *Failure
@@ -71,7 +75,7 @@ type Candidate struct {
 	ID       CandidateID
 	RunID    RunID
 	MediaIDs []string
-	Status   CandidateStatus
+	Status   taskdomain.CandidateStatus
 }
 
 // ConfirmCandidateCommand contains the asset target required to apply an
