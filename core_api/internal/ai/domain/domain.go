@@ -43,6 +43,7 @@ type Prompt struct {
 }
 
 type StepType string
+type RequestKind string
 
 type PlanConstraints struct {
 	AllowedStepTypes []StepType
@@ -52,10 +53,15 @@ type PlanConstraints struct {
 }
 
 type PlanRequest struct {
-	RequestID   string
-	ProjectID   uint
-	Instruction string
-	Constraints PlanConstraints
+	RequestID              string
+	ProjectID              uint
+	AssetID                uint
+	RequestKind            RequestKind
+	Prompt                 string
+	ReferenceMediaIDs      []MediaID
+	TargetAssetResourceIDs []uint
+	Parameters             json.RawMessage
+	Constraints            PlanConstraints
 }
 
 type ProposedStep struct {
