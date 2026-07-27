@@ -13,7 +13,7 @@ type GenerationRequest struct {
 	ProjectID              uint
 	AssetID                uint
 	Kind                   RequestKind
-	Instruction            string
+	Prompt                 string
 	ReferenceMediaIDs      []string
 	TargetAssetResourceIDs []uint
 	Parameters             json.RawMessage

@@ -24,7 +24,7 @@ func (h *GenerationHandler) Create(
 		ProjectID:              request.ProjectID,
 		AssetID:                request.AssetID,
 		Kind:                   request.Kind,
-		Instruction:            request.Instruction,
+		Prompt:                 request.Prompt,
 		ReferenceMediaIDs:      request.ReferenceMediaIDs,
 		TargetAssetResourceIDs: request.TargetAssetResourceIDs,
 		Parameters:             request.Parameters,

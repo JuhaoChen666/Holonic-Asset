@@ -10,7 +10,7 @@ type CreateGenerationRequest struct {
 	ProjectID              uint               `param:"project_id" json:"-"`
 	AssetID                uint               `json:"assetId,omitempty"`
 	Kind                   domain.RequestKind `json:"kind"`
-	Instruction            string             `json:"instruction"`
+	Prompt                 string             `json:"prompt"`
 	ReferenceMediaIDs      []string           `json:"referenceMediaIds,omitempty"`
 	TargetAssetResourceIDs []uint             `json:"targetAssetResourceIds,omitempty"`
 	Parameters             json.RawMessage    `json:"parameters,omitempty"`
