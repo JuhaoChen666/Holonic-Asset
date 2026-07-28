@@ -23,7 +23,7 @@ func InitServer() *App {
 	generationService := appservice.NewGenerationService(nil, nil, nil)
 	generationHandler := handler.NewGenerationHandler(generationService)
 
-	mediaService := appservice.NewMediaService()
+	mediaService := appservice.NewMediaService(nil)
 	mediaHandler := handler.NewMediaHandler(mediaService)
 
 	taxonomyService := appservice.NewAssetDiscoveryService()

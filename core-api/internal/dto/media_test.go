@@ -8,14 +8,17 @@ import (
 )
 
 func TestCreateProjectPreviewUploadRequestJSONContract(t *testing.T) {
-	request := dto.CreateProjectPreviewUploadRequest{ContentType: "image/png"}
+	request := dto.CreateProjectPreviewUploadRequest{
+		ContentType:   "image/png",
+		ContentLength: 8,
+	}
 
 	encoded, err := json.Marshal(request)
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
 	}
 
-	want := `{"contentType":"image/png"}`
+	want := `{"contentType":"image/png","contentLength":8}`
 	if string(encoded) != want {
 		t.Fatalf("expected %s, got %s", want, encoded)
 	}
@@ -23,8 +26,10 @@ func TestCreateProjectPreviewUploadRequestJSONContract(t *testing.T) {
 
 func TestProjectPreviewUploadTargetJSONContract(t *testing.T) {
 	target := dto.ProjectPreviewUploadTarget{
-		ObjectKey: "users/7/project-previews/uuid",
-		UploadURL: "https://account-id.r2.cloudflarestorage.com/bucket/users/7/project-previews/uuid?X-Amz-Signature=...",
+		ObjectKey:   "users/7/project-previews/uuid",
+		ObjectURL:   "https://media.example.com/users/7/project-previews/uuid",
+		UploadURL:   "https://upload.qiniup.com",
+		UploadToken: "access-key:signature:policy",
 	}
 
 	encoded, err := json.Marshal(target)
@@ -32,7 +37,7 @@ func TestProjectPreviewUploadTargetJSONContract(t *testing.T) {
 		t.Fatalf("marshal target: %v", err)
 	}
 
-	want := `{"objectKey":"users/7/project-previews/uuid","uploadURL":"https://account-id.r2.cloudflarestorage.com/bucket/users/7/project-previews/uuid?X-Amz-Signature=..."}`
+	want := `{"objectKey":"users/7/project-previews/uuid","objectURL":"https://media.example.com/users/7/project-previews/uuid","uploadURL":"https://upload.qiniup.com","uploadToken":"access-key:signature:policy"}`
 	if string(encoded) != want {
 		t.Fatalf("expected %s, got %s", want, encoded)
 	}

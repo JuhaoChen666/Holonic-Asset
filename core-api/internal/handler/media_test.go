@@ -36,12 +36,17 @@ func (s *projectPreviewUploadServiceStub) CreateProjectPreviewUploadTarget(
 
 func TestCreateProjectPreviewUploadTargetForwardsRequestToService(t *testing.T) {
 	wantTarget := &service.ProjectPreviewUploadTarget{
-		ObjectKey: "users/7/project-previews/uuid",
-		UploadURL: "https://r2.example/upload",
+		ObjectKey:   "users/7/project-previews/uuid",
+		ObjectURL:   "https://media.example.com/users/7/project-previews/uuid",
+		UploadURL:   "https://upload.qiniup.com",
+		UploadToken: "access-key:signature:policy",
 	}
 	stub := &projectPreviewUploadServiceStub{target: wantTarget}
 	mediaHandler := handler.NewMediaHandler(stub)
-	request := dto.CreateProjectPreviewUploadRequest{ContentType: "image/png"}
+	request := dto.CreateProjectPreviewUploadRequest{
+		ContentType:   "image/png",
+		ContentLength: 8,
+	}
 	handlerContext := newHandlerContext()
 
 	target, err := mediaHandler.CreateProjectPreviewUploadTarget(handlerContext, request)
@@ -54,10 +59,10 @@ func TestCreateProjectPreviewUploadTargetForwardsRequestToService(t *testing.T) 
 	if stub.ctx != handlerContext {
 		t.Fatal("expected handler context to be forwarded to the service")
 	}
-	if stub.request == nil || stub.request.ContentType != request.ContentType {
+	if stub.request == nil || stub.request.ContentType != request.ContentType || stub.request.ContentLength != request.ContentLength {
 		t.Fatalf("expected request %+v, got %+v", request, stub.request)
 	}
-	if target.ObjectKey != wantTarget.ObjectKey || target.UploadURL != wantTarget.UploadURL {
+	if target.ObjectKey != wantTarget.ObjectKey || target.ObjectURL != wantTarget.ObjectURL || target.UploadURL != wantTarget.UploadURL || target.UploadToken != wantTarget.UploadToken {
 		t.Fatalf("expected target %+v, got %+v", wantTarget, target)
 	}
 }

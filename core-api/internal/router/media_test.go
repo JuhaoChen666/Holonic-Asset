@@ -14,14 +14,14 @@ import (
 )
 
 func TestProjectPreviewUploadTargetRouteReturnsPlaceholderResponse(t *testing.T) {
-	mediaService := service.NewMediaService()
+	mediaService := service.NewMediaService(nil)
 	mediaHandler := handler.NewMediaHandler(mediaService)
 	e := router.Register(nil, nil, nil, mediaHandler, nil)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/media/project-preview/upload-target",
-		strings.NewReader(`{"contentType":"image/png"}`),
+		strings.NewReader(`{"contentType":"image/png","contentLength":8}`),
 	)
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	recorder := httptest.NewRecorder()
@@ -31,13 +31,13 @@ func TestProjectPreviewUploadTargetRouteReturnsPlaceholderResponse(t *testing.T)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, recorder.Code, recorder.Body.String())
 	}
-	if recorder.Body.String() != "{\"objectKey\":\"\",\"uploadURL\":\"\"}\n" {
+	if recorder.Body.String() != "{\"objectKey\":\"\",\"objectURL\":\"\",\"uploadURL\":\"\",\"uploadToken\":\"\"}\n" {
 		t.Fatalf("unexpected placeholder response: %s", recorder.Body.String())
 	}
 }
 
 func TestMediaRoutesDoNotExposeUnsupportedOperations(t *testing.T) {
-	mediaService := service.NewMediaService()
+	mediaService := service.NewMediaService(nil)
 	mediaHandler := handler.NewMediaHandler(mediaService)
 	e := router.Register(nil, nil, nil, mediaHandler, nil)
 

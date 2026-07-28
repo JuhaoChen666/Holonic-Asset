@@ -19,13 +19,16 @@ func (h *MediaHandler) CreateProjectPreviewUploadTarget(
 	request dto.CreateProjectPreviewUploadRequest,
 ) (*dto.ProjectPreviewUploadTarget, error) {
 	target, err := h.service.CreateProjectPreviewUploadTarget(c, &service.CreateProjectPreviewUploadRequest{
-		ContentType: request.ContentType,
+		ContentType:   request.ContentType,
+		ContentLength: request.ContentLength,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &dto.ProjectPreviewUploadTarget{
-		ObjectKey: target.ObjectKey,
-		UploadURL: target.UploadURL,
+		ObjectKey:   target.ObjectKey,
+		ObjectURL:   target.ObjectURL,
+		UploadURL:   target.UploadURL,
+		UploadToken: target.UploadToken,
 	}, nil
 }
