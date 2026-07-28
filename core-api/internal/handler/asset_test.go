@@ -21,20 +21,35 @@ type assetServiceStub struct {
 	service.AssetService
 	assets       []domain.Asset
 	asset        domain.Asset
+	updatedAsset *domain.Asset
 	getAssetsErr error
 	getDetailErr error
+	updateErr    error
 	projectID    uint
 	assetID      uint
+	filter       domain.AssetListFilter
+	updateID     uint
+	update       *domain.AssetUpdate
 }
 
-func (s *assetServiceStub) GetAssets(_ context.Context, projectID uint) ([]domain.Asset, error) {
+func (s *assetServiceStub) GetAssets(_ context.Context, projectID uint, filter domain.AssetListFilter) ([]domain.Asset, error) {
 	s.projectID = projectID
+	s.filter = filter
 	return s.assets, s.getAssetsErr
 }
 
 func (s *assetServiceStub) GetDetail(_ context.Context, assetID uint) (domain.Asset, error) {
 	s.assetID = assetID
 	return s.asset, s.getDetailErr
+}
+
+func (s *assetServiceStub) UpdateAsset(_ context.Context, assetID uint, update *domain.AssetUpdate) (*domain.Asset, error) {
+	s.updateID = assetID
+	s.update = update
+	if s.updatedAsset != nil {
+		return s.updatedAsset, s.updateErr
+	}
+	return &domain.Asset{ID: assetID}, s.updateErr
 }
 
 func TestAssetHandlerGetAssetsMapsResponse(t *testing.T) {
@@ -47,9 +62,9 @@ func TestAssetHandlerGetAssetsMapsResponse(t *testing.T) {
 		Tags:        []string{"player"},
 		Version:     3,
 	}}}
-	h := handler.NewHandler(serviceStub, nil, nil)
+	h := handler.NewHandler(serviceStub, nil)
 
-	response, err := h.GetAssets(newAssetHandlerContext("project_id", "42"))
+	response, err := h.GetAssets(newAssetHandlerContext("project_id", "42"), dto.GetAssetsRequest{})
 	if err != nil {
 		t.Fatalf("get assets: %v", err)
 	}
@@ -76,6 +91,65 @@ func TestAssetHandlerGetAssetsMapsResponse(t *testing.T) {
 	}
 }
 
+func TestAssetHandlerPassesAssetQueryFilter(t *testing.T) {
+	serviceStub := &assetServiceStub{}
+	h := handler.NewHandler(serviceStub, nil)
+
+	_, err := h.GetAssets(newAssetHandlerContext("project_id", "42"), dto.GetAssetsRequest{
+		Query: "hero",
+		Tags:  []string{"player"},
+		Types: []domain.AssetType{domain.AssetTypeCharacter},
+	})
+	if err != nil {
+		t.Fatalf("get assets: %v", err)
+	}
+	if serviceStub.filter.Query != "hero" || len(serviceStub.filter.Tags) != 1 || len(serviceStub.filter.Types) != 1 {
+		t.Fatalf("unexpected asset filter: %+v", serviceStub.filter)
+	}
+}
+
+func TestAssetHandlerUpdatesAssetBasicsWithoutContent(t *testing.T) {
+	name := "updated hero"
+	projectID := uint(99)
+	typeValue := domain.AssetTypeObject
+	description := "updated description"
+	tags := []string{"prop"}
+	attributes := json.RawMessage(`{"scale":2}`)
+	version := uint(4)
+	serviceStub := &assetServiceStub{updatedAsset: &domain.Asset{
+		ID:          7,
+		Name:        name,
+		ProjectID:   projectID,
+		Type:        typeValue,
+		Description: description,
+		Tags:        tags,
+		Attributes:  attributes,
+		Version:     version,
+	}}
+	h := handler.NewHandler(serviceStub, nil)
+
+	response, err := h.Tags(newAssetHandlerContext("asset_id", "7"), dto.UpdateAssetRequest{
+		AssetID:     7,
+		Name:        &name,
+		ProjectID:   &projectID,
+		Type:        &typeValue,
+		Description: &description,
+		Tags:        &tags,
+		Attributes:  &attributes,
+		Version:     &version,
+	})
+	if err != nil {
+		t.Fatalf("update asset basics: %v", err)
+	}
+	if serviceStub.updateID != 7 || serviceStub.update == nil || serviceStub.update.Name == nil || *serviceStub.update.Name != name {
+		t.Fatalf("unexpected update request: %+v", serviceStub.update)
+	}
+	data, ok := response.Data.(dto.UpdateAssetResponse)
+	if !ok || data.AssetID != 7 || data.Name != name || string(data.Attributes) != string(attributes) {
+		t.Fatalf("unexpected update response: %+v", response.Data)
+	}
+}
+
 func TestAssetHandlerDetailMapsResponse(t *testing.T) {
 	serviceStub := &assetServiceStub{asset: domain.Asset{
 		ID:          7,
@@ -87,7 +161,7 @@ func TestAssetHandlerDetailMapsResponse(t *testing.T) {
 		Attributes:  json.RawMessage(`{"mesh":"hero.glb"}`),
 		Version:     2,
 	}}
-	h := handler.NewHandler(serviceStub, nil, nil)
+	h := handler.NewHandler(serviceStub, nil)
 
 	response, err := h.Detail(newAssetHandlerContext("asset_id", "7"))
 	if err != nil {
@@ -106,8 +180,8 @@ func TestAssetHandlerDetailMapsResponse(t *testing.T) {
 }
 
 func TestAssetHandlerRejectsZeroIDs(t *testing.T) {
-	h := handler.NewHandler(&assetServiceStub{}, nil, nil)
-	if _, err := h.GetAssets(newAssetHandlerContext("project_id", "0")); !errors.Is(err, echo.ErrBadRequest) {
+	h := handler.NewHandler(&assetServiceStub{}, nil)
+	if _, err := h.GetAssets(newAssetHandlerContext("project_id", "0"), dto.GetAssetsRequest{}); !errors.Is(err, echo.ErrBadRequest) {
 		t.Fatalf("expected bad request for zero project ID, got %v", err)
 	}
 	if _, err := h.Detail(newAssetHandlerContext("asset_id", "invalid")); !errors.Is(err, echo.ErrBadRequest) {
@@ -117,7 +191,7 @@ func TestAssetHandlerRejectsZeroIDs(t *testing.T) {
 
 func TestAssetHandlerPropagatesServiceErrors(t *testing.T) {
 	wantErr := errors.New("asset service failed")
-	h := handler.NewHandler(&assetServiceStub{getDetailErr: wantErr}, nil, nil)
+	h := handler.NewHandler(&assetServiceStub{getDetailErr: wantErr}, nil)
 
 	_, err := h.Detail(newAssetHandlerContext("asset_id", "7"))
 	if !errors.Is(err, wantErr) {

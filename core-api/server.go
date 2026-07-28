@@ -26,11 +26,8 @@ func InitServer() *App {
 	mediaService := appservice.NewMediaService()
 	mediaHandler := handler.NewMediaHandler(mediaService)
 
-	taxonomyService := appservice.NewAssetDiscoveryService()
-	taxonomyHandler := handler.NewTaxonomyHandler(taxonomyService)
-
 	return &App{
-		engine: router.Register(nil, projectHandler, generationHandler, mediaHandler, taxonomyHandler),
+		engine: router.Register(nil, projectHandler, generationHandler, mediaHandler),
 	}
 }
 
