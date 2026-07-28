@@ -13,14 +13,14 @@ import (
 	"github.com/1024XEngineer/Holonic-Asset/internal/service"
 )
 
-func TestProjectPreviewUploadTargetRouteReturnsPlaceholderResponse(t *testing.T) {
-	mediaService := service.NewMediaService(nil)
-	mediaHandler := handler.NewMediaHandler(mediaService)
-	e := router.Register(nil, nil, nil, mediaHandler, nil)
+func TestUploadsRouteReturnsPlaceholderResponse(t *testing.T) {
+	uploadService := service.NewUploadService(nil)
+	uploadHandler := handler.NewUploadHandler(uploadService)
+	e := router.Register(nil, nil, nil, uploadHandler, nil)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
-		"/api/v1/media/project-preview/upload-target",
+		"/api/v1/uploads",
 		strings.NewReader(`{"contentType":"image/png","contentLength":8}`),
 	)
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -36,13 +36,16 @@ func TestProjectPreviewUploadTargetRouteReturnsPlaceholderResponse(t *testing.T)
 	}
 }
 
-func TestMediaRoutesDoNotExposeUnsupportedOperations(t *testing.T) {
-	mediaService := service.NewMediaService(nil)
-	mediaHandler := handler.NewMediaHandler(mediaService)
-	e := router.Register(nil, nil, nil, mediaHandler, nil)
+func TestUploadRoutesDoNotExposeUnsupportedOperations(t *testing.T) {
+	uploadService := service.NewUploadService(nil)
+	uploadHandler := handler.NewUploadHandler(uploadService)
+	e := router.Register(nil, nil, nil, uploadHandler, nil)
 
 	routes := []string{
+		"/api/v1/upload",
+		"/api/v1/media/upload",
 		"/api/v1/media/upload-target",
+		"/api/v1/media/project-preview/upload-target",
 		"/api/v1/media/project-preview/direct-upload",
 		"/api/v1/media/generated-image/upload",
 		"/api/v1/media/upload/complete",

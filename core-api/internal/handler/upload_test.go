@@ -16,42 +16,42 @@ import (
 	"github.com/1024XEngineer/Holonic-Asset/pkg/echox"
 )
 
-type projectPreviewUploadServiceStub struct {
-	target  *service.ProjectPreviewUploadTarget
+type uploadServiceStub struct {
+	target  *service.UploadTarget
 	err     error
 	ctx     context.Context
-	request *service.CreateProjectPreviewUploadRequest
+	request *service.CreateUploadTargetRequest
 	calls   int
 }
 
-func (s *projectPreviewUploadServiceStub) CreateProjectPreviewUploadTarget(
+func (s *uploadServiceStub) CreateUploadTarget(
 	ctx context.Context,
-	request *service.CreateProjectPreviewUploadRequest,
-) (*service.ProjectPreviewUploadTarget, error) {
+	request *service.CreateUploadTargetRequest,
+) (*service.UploadTarget, error) {
 	s.calls++
 	s.ctx = ctx
 	s.request = request
 	return s.target, s.err
 }
 
-func TestCreateProjectPreviewUploadTargetForwardsRequestToService(t *testing.T) {
-	wantTarget := &service.ProjectPreviewUploadTarget{
-		ObjectKey:   "users/7/project-previews/uuid",
-		ObjectURL:   "https://media.example.com/users/7/project-previews/uuid",
+func TestCreateUploadTargetForwardsRequestToService(t *testing.T) {
+	wantTarget := &service.UploadTarget{
+		ObjectKey:   "users/7/uploads/uuid",
+		ObjectURL:   "https://files.example.com/users/7/uploads/uuid",
 		UploadURL:   "https://upload.qiniup.com",
 		UploadToken: "access-key:signature:policy",
 	}
-	stub := &projectPreviewUploadServiceStub{target: wantTarget}
-	mediaHandler := handler.NewMediaHandler(stub)
-	request := dto.CreateProjectPreviewUploadRequest{
+	stub := &uploadServiceStub{target: wantTarget}
+	uploadHandler := handler.NewUploadHandler(stub)
+	request := dto.CreateUploadTargetRequest{
 		ContentType:   "image/png",
 		ContentLength: 8,
 	}
 	handlerContext := newHandlerContext()
 
-	target, err := mediaHandler.CreateProjectPreviewUploadTarget(handlerContext, request)
+	target, err := uploadHandler.CreateUploadTarget(handlerContext, request)
 	if err != nil {
-		t.Fatalf("create project preview upload target: %v", err)
+		t.Fatalf("create upload target: %v", err)
 	}
 	if stub.calls != 1 {
 		t.Fatalf("expected one service call, got %d", stub.calls)
@@ -67,14 +67,14 @@ func TestCreateProjectPreviewUploadTargetForwardsRequestToService(t *testing.T) 
 	}
 }
 
-func TestCreateProjectPreviewUploadTargetPropagatesServiceError(t *testing.T) {
-	wantErr := errors.New("create project preview upload target failed")
-	stub := &projectPreviewUploadServiceStub{err: wantErr}
-	mediaHandler := handler.NewMediaHandler(stub)
+func TestCreateUploadTargetPropagatesServiceError(t *testing.T) {
+	wantErr := errors.New("create upload target failed")
+	stub := &uploadServiceStub{err: wantErr}
+	uploadHandler := handler.NewUploadHandler(stub)
 
-	target, err := mediaHandler.CreateProjectPreviewUploadTarget(
+	target, err := uploadHandler.CreateUploadTarget(
 		newHandlerContext(),
-		dto.CreateProjectPreviewUploadRequest{},
+		dto.CreateUploadTargetRequest{},
 	)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected error %v, got %v", wantErr, err)

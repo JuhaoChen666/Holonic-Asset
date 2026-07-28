@@ -7,8 +7,8 @@ import (
 	"github.com/1024XEngineer/Holonic-Asset/internal/dto"
 )
 
-func TestCreateProjectPreviewUploadRequestJSONContract(t *testing.T) {
-	request := dto.CreateProjectPreviewUploadRequest{
+func TestCreateUploadTargetRequestJSONContract(t *testing.T) {
+	request := dto.CreateUploadTargetRequest{
 		ContentType:   "image/png",
 		ContentLength: 8,
 	}
@@ -24,10 +24,10 @@ func TestCreateProjectPreviewUploadRequestJSONContract(t *testing.T) {
 	}
 }
 
-func TestProjectPreviewUploadTargetJSONContract(t *testing.T) {
-	target := dto.ProjectPreviewUploadTarget{
-		ObjectKey:   "users/7/project-previews/uuid",
-		ObjectURL:   "https://media.example.com/users/7/project-previews/uuid",
+func TestUploadTargetJSONContract(t *testing.T) {
+	target := dto.UploadTarget{
+		ObjectKey:   "users/7/uploads/uuid",
+		ObjectURL:   "https://files.example.com/users/7/uploads/uuid",
 		UploadURL:   "https://upload.qiniup.com",
 		UploadToken: "access-key:signature:policy",
 	}
@@ -37,7 +37,7 @@ func TestProjectPreviewUploadTargetJSONContract(t *testing.T) {
 		t.Fatalf("marshal target: %v", err)
 	}
 
-	want := `{"objectKey":"users/7/project-previews/uuid","objectURL":"https://media.example.com/users/7/project-previews/uuid","uploadURL":"https://upload.qiniup.com","uploadToken":"access-key:signature:policy"}`
+	want := `{"objectKey":"users/7/uploads/uuid","objectURL":"https://files.example.com/users/7/uploads/uuid","uploadURL":"https://upload.qiniup.com","uploadToken":"access-key:signature:policy"}`
 	if string(encoded) != want {
 		t.Fatalf("expected %s, got %s", want, encoded)
 	}
