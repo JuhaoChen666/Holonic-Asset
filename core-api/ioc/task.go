@@ -13,8 +13,9 @@ import (
 func InitTask(
 	ctx context.Context,
 	cfg config.QueueConfig,
+	repo task.TaskResultStore,
 ) (task.Queue, error) {
-	queue, err := task.NewQueue(ctx, cfg)
+	queue, err := task.NewQueue(ctx, cfg, repo)
 	if err != nil {
 		return nil, fmt.Errorf("ioc: initialize task queue: %w", err)
 	}

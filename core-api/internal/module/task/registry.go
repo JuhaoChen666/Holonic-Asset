@@ -29,14 +29,14 @@ func (r *registry) get(taskType string) (Handler, bool) {
 	return h, ok
 }
 
-func (r *registry) dispatch(ctx context.Context, message *Task) error {
+func (r *registry) dispatch(ctx context.Context, message *Task) (any, error) {
 	if message == nil {
-		return fmt.Errorf("task: cannot dispatch nil task")
+		return nil, fmt.Errorf("task: cannot dispatch nil task")
 	}
 
 	handler, ok := r.get(message.Type)
 	if !ok {
-		return fmt.Errorf("task: no handler registered for type %q", message.Type)
+		return nil, fmt.Errorf("task: no handler registered for type %q", message.Type)
 	}
 	return handler.Handle(ctx, message)
 }

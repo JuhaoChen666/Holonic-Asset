@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -41,15 +42,19 @@ type TaskQueue struct {
 	client   *riverqueue.Client[pgx.Tx]
 	dbPool   *pgxpool.Pool
 	registry *registry
+	repo     TaskResultStore
 }
 
 // NewQueue creates a ready-to-use task queue using the module's configuration.
-func NewQueue(ctx context.Context, cfg config.QueueConfig) (Queue, error) {
+func NewQueue(ctx context.Context, cfg config.QueueConfig, repo TaskResultStore) (Queue, error) {
 	if cfg.DatabaseURL == "" {
 		return nil, fmt.Errorf("task: database URL is required")
 	}
 	if cfg.MaxWorkers < 1 {
 		return nil, fmt.Errorf("task: max workers must be at least 1")
+	}
+	if repo == nil {
+		return nil, fmt.Errorf("task: task result store is required")
 	}
 
 	dbPool, err := pgxpool.New(ctx, cfg.DatabaseURL)
@@ -57,7 +62,7 @@ func NewQueue(ctx context.Context, cfg config.QueueConfig) (Queue, error) {
 		return nil, fmt.Errorf("task: create database pool: %w", err)
 	}
 
-	queue := &TaskQueue{dbPool: dbPool, registry: newRegistry()}
+	queue := &TaskQueue{dbPool: dbPool, registry: newRegistry(), repo: repo}
 	workers := riverqueue.NewWorkers()
 	riverqueue.AddWorker(workers, &queueWorker{queue: queue})
 
@@ -128,7 +133,26 @@ func (q *TaskQueue) Stop() error {
 }
 
 func (q *TaskQueue) dispatch(ctx context.Context, message *Task) error {
-	return q.registry.dispatch(ctx, message)
+	if message == nil {
+		return fmt.Errorf("task: cannot dispatch nil task")
+	}
+
+	data, err := q.registry.dispatch(ctx, message)
+	if err != nil {
+		return err
+	}
+
+	result, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("task: encode result for task %d: %w", message.ID, err)
+	}
+	if err := q.repo.UpdateTaskResult(ctx, message.ID, result); err != nil {
+		return fmt.Errorf("task: persist result for task %d: %w", message.ID, err)
+	}
+
+	message.Result = result
+	message.Status = StatusCompleted
+	return nil
 }
 
 var (

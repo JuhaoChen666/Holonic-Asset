@@ -17,14 +17,14 @@ type examplePayload struct {
 
 func registerExampleHandler(queue task.Queue) {
 	queue.Register(exampleTaskType, task.HandlerFunc(
-		func(_ context.Context, message *task.Task) error {
+		func(_ context.Context, message *task.Task) (any, error) {
 			var payload examplePayload
 			if err := json.Unmarshal(message.Payload, &payload); err != nil {
 				return fmt.Errorf("decode example payload: %w", err)
 			}
 
 			fmt.Printf("handled task %d: %s\n", message.ID, payload.Message)
-			return nil
+			return payload, nil
 		},
 	))
 }
@@ -49,7 +49,7 @@ queue, err := task.NewQueue(ctx, config.QueueConfig{
 	DatabaseURL: databaseURL,
 	MaxWorkers:  4,
 	JobTimeout:  5 * time.Minute,
-})
+}, taskRepo)
 if err != nil {
 	return err
 }
@@ -110,7 +110,17 @@ Task lifecycle operations and outbox dispatch belong to this module as well:
 
 ```go
 manager := task.NewTaskManager(taskStore)
+pending, err := manager.ListByStatus(ctx, task.StatusPending)
+if err != nil {
+	return err
+}
+_ = pending
+
+queue, err := task.NewQueue(ctx, cfg.Queue, taskResultStore)
+if err != nil {
+	return err
+}
 dispatcher := task.NewDispatcher(taskStore, queue)
 ```
 
-The repository package implements `task.TaskStore` and `task.OutboxStore`; the task module owns the ports and does not depend on repository or DAO types.
+The repository package implements `task.TaskStore`, `task.TaskResultStore`, and `task.OutboxStore`; the queue only depends on the narrow `task.TaskResultStore` port needed for automatic completion updates.

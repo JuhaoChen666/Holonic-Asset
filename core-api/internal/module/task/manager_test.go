@@ -21,6 +21,10 @@ func (*taskStoreStub) GetTaskByID(context.Context, uint) (*Task, error) {
 	return &Task{ID: 42}, nil
 }
 
+func (*taskStoreStub) ListTasksByStatus(context.Context, Status) ([]*Task, error) {
+	return []*Task{{ID: 42, Status: StatusPending}}, nil
+}
+
 func (s *taskStoreStub) UpdateTaskStatus(_ context.Context, _ uint, status Status) error {
 	s.status = status
 	return nil
@@ -43,7 +47,6 @@ func TestTaskManagerDelegatesLifecycleOperations(t *testing.T) {
 	store := &taskStoreStub{}
 	manager := NewTaskManager(store)
 	message := &Task{Type: "example.v1"}
-	result := json.RawMessage(`{"ok":true}`)
 
 	id, err := manager.Create(context.Background(), message)
 	if err != nil {
@@ -61,6 +64,14 @@ func TestTaskManagerDelegatesLifecycleOperations(t *testing.T) {
 		t.Fatalf("unexpected task detail: %+v", detail)
 	}
 
+	tasks, err := manager.ListByStatus(context.Background(), StatusPending)
+	if err != nil {
+		t.Fatalf("list tasks by status: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].ID != id || tasks[0].Status != StatusPending {
+		t.Fatalf("unexpected task list: %+v", tasks)
+	}
+
 	if err := manager.UpdateStatus(context.Background(), id, StatusProcessing); err != nil {
 		t.Fatalf("update task status: %v", err)
 	}
@@ -68,10 +79,4 @@ func TestTaskManagerDelegatesLifecycleOperations(t *testing.T) {
 		t.Fatalf("unexpected status: %v", store.status)
 	}
 
-	if err := manager.UpdateResult(context.Background(), id, result); err != nil {
-		t.Fatalf("update task result: %v", err)
-	}
-	if string(store.result) != string(result) {
-		t.Fatalf("unexpected result: %s", store.result)
-	}
 }

@@ -2,14 +2,13 @@ package task
 
 import (
 	"context"
-	"encoding/json"
 )
 
 type TaskManager interface {
 	Create(ctx context.Context, task *Task) (uint, error)
 	GetDetail(ctx context.Context, taskID uint) (*Task, error)
+	ListByStatus(ctx context.Context, status Status) ([]*Task, error)
 	UpdateStatus(ctx context.Context, taskID uint, status Status) error
-	UpdateResult(ctx context.Context, taskID uint, result json.RawMessage) error
 }
 
 type TaskManagerImpl struct {
@@ -28,12 +27,12 @@ func (m *TaskManagerImpl) GetDetail(ctx context.Context, taskID uint) (*Task, er
 	return m.store.GetTaskByID(ctx, taskID)
 }
 
-func (m *TaskManagerImpl) UpdateStatus(ctx context.Context, taskID uint, status Status) error {
-	return m.store.UpdateTaskStatus(ctx, taskID, status)
+func (m *TaskManagerImpl) ListByStatus(ctx context.Context, status Status) ([]*Task, error) {
+	return m.store.ListTasksByStatus(ctx, status)
 }
 
-func (m *TaskManagerImpl) UpdateResult(ctx context.Context, taskID uint, result json.RawMessage) error {
-	return m.store.UpdateTaskResult(ctx, taskID, result)
+func (m *TaskManagerImpl) UpdateStatus(ctx context.Context, taskID uint, status Status) error {
+	return m.store.UpdateTaskStatus(ctx, taskID, status)
 }
 
 var _ TaskManager = (*TaskManagerImpl)(nil)

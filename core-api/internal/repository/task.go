@@ -96,6 +96,28 @@ func (r *TaskRepositoryImpl) GetTaskByID(ctx context.Context, taskID uint) (*dom
 	}, nil
 }
 
+func (r *TaskRepositoryImpl) ListTasksByStatus(ctx context.Context, status domain.Status) ([]*domain.Task, error) {
+	items, err := r.TaskDao.ListByStatus(ctx, uint(status))
+	if err != nil {
+		return nil, fmt.Errorf("repo: list tasks by status %s: %w", status, err)
+	}
+
+	tasks := make([]*domain.Task, 0, len(items))
+	for _, item := range items {
+		tasks = append(tasks, &domain.Task{
+			ID:        item.ID,
+			Type:      item.Type,
+			Status:    domain.Status(item.Status),
+			Payload:   json.RawMessage(item.Payload),
+			Result:    json.RawMessage(item.Result),
+			Error:     item.Error,
+			CreatedAt: item.CreatedAt,
+			UpdatedAt: item.UpdatedAt,
+		})
+	}
+	return tasks, nil
+}
+
 func (r *TaskRepositoryImpl) FetchPendingOutbox(ctx context.Context, limit int) ([]domain.OutboxRecord, error) {
 	records, err := r.OutboxDao.FetchPending(ctx, limit)
 	if err != nil {
