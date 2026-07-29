@@ -9,19 +9,15 @@ import (
 
 func TestAssetContentSupportsDynamicAnimationDirections(t *testing.T) {
 	content := domain.NewAssetContent(domain.AssetTypeCharacter)
-	content.ViewElements = []string{"front", "left", "right"}
+	content.DirectionCount = 2
 	content.Animations = []domain.Animation{{
-		ID:     7,
-		Name:   "walk",
-		Status: domain.ContentStatusProcessing,
+		ID:   7,
+		Name: "walk",
 		Directions: map[string]domain.AnimationDirection{
 			"left": {
-				Status: domain.ContentStatusCompleted,
-				Frames: []domain.Frame{{Status: domain.ContentStatusCompleted}},
+				Frames: []domain.Frame{{}},
 			},
-			"right": {
-				Status: domain.ContentStatusPending,
-			},
+			"right": {},
 		},
 	}}
 
@@ -34,11 +30,11 @@ func TestAssetContentSupportsDynamicAnimationDirections(t *testing.T) {
 	if err := json.Unmarshal(payload, &decoded); err != nil {
 		t.Fatalf("decode asset content: %v", err)
 	}
-	if decoded.Prototype == nil || decoded.Prototype.Status != domain.ContentStatusPending {
-		t.Fatalf("expected pending prototype: %+v", decoded.Prototype)
+	if decoded.Prototype == nil {
+		t.Fatalf("expected prototype: %+v", decoded.Prototype)
 	}
-	if len(decoded.Animations) != 1 || decoded.Animations[0].Directions["right"].Status != domain.ContentStatusPending {
-		t.Fatalf("dynamic direction state was not preserved: %+v", decoded.Animations)
+	if len(decoded.Animations) != 1 || len(decoded.Animations[0].Directions) != 2 {
+		t.Fatalf("dynamic direction data was not preserved: %+v", decoded.Animations)
 	}
 }
 
@@ -52,13 +48,13 @@ func TestAssetDecodeContentInitializesMissingContent(t *testing.T) {
 	}
 }
 
-func TestAssetContentMatchesPrototypeDirectionsToViewElements(t *testing.T) {
+func TestAssetContentMatchesPrototypeDirectionsToDirectionCount(t *testing.T) {
 	content := domain.NewAssetContent(domain.AssetTypeCharacter)
 	content.ViewMode = domain.ViewModeSideOn
-	content.ViewElements = []string{"left", "right"}
+	content.DirectionCount = 2
 	content.Prototype.Directions = map[string]domain.PrototypeDirection{
-		"left":   {Status: domain.ContentStatusCompleted, Image: &domain.ImageResource{Status: domain.ContentStatusCompleted}},
-		"unused": {Status: domain.ContentStatusCompleted, Image: &domain.ImageResource{Status: domain.ContentStatusCompleted}},
+		"left":   {Image: &domain.ImageResource{}},
+		"unused": {Image: &domain.ImageResource{}},
 	}
 
 	payload, err := domain.EncodeContent(content)
@@ -75,8 +71,8 @@ func TestAssetContentMatchesPrototypeDirectionsToViewElements(t *testing.T) {
 	if _, ok := decoded.Prototype.Directions["unused"]; ok {
 		t.Fatal("unsupported prototype direction should be removed")
 	}
-	if decoded.Prototype.Directions["right"].Status != domain.ContentStatusPending {
-		t.Fatalf("missing direction should be initialized as pending")
+	if _, ok := decoded.Prototype.Directions["right"]; !ok {
+		t.Fatalf("missing direction should be initialized")
 	}
 }
 
@@ -84,11 +80,9 @@ func TestAssetContentPreservesTileGridPositionAndFixedSize(t *testing.T) {
 	content := domain.NewAssetContent(domain.AssetTypeTileSet)
 	content.TileSize = &domain.TileSize{Width: 32, Height: 32}
 	content.Items = []domain.TileSetItem{{
-		Name:   "grass",
-		Status: domain.ContentStatusCompleted,
+		Name: "grass",
 		Tiles: []domain.Tile{{
 			Name:     "grass-center",
-			Status:   domain.ContentStatusCompleted,
 			Position: domain.TilePosition{X: 0, Y: 1},
 		}},
 	}}

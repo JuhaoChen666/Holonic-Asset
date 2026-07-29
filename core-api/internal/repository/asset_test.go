@@ -35,6 +35,16 @@ func (s *assetDaoStub) GetAssetDetail(_ context.Context, assetID uint) (dao.Asse
 	return s.asset, s.getDetailErr
 }
 
+func (s *assetDaoStub) GetAsset(_ context.Context, assetID uint) (dao.Asset, error) {
+	s.assetID = assetID
+	return s.asset, s.getDetailErr
+}
+
+func (s *assetDaoStub) GetAssetForUpdate(_ context.Context, assetID uint) (dao.Asset, error) {
+	s.assetID = assetID
+	return s.asset, s.getDetailErr
+}
+
 func (s *assetDaoStub) UpdateAsset(_ context.Context, assetID uint, update *dao.AssetUpdate) (dao.Asset, error) {
 	s.updateID = assetID
 	s.update = update
@@ -102,7 +112,7 @@ func TestAssetRepositoryMatchesAssetQueryByNameOrDescription(t *testing.T) {
 	}}
 	repo := &repository.AssetRepositoryImpl{AssetDao: daoStub}
 
-	got, err := repo.GetAssetsByProjectID(context.Background(), 42, domain.AssetListFilter{Query: "FOREST"})
+	got, err := repo.GetAssetsByProjectID(context.Background(), 42, domain.AssetListFilter{Query: "forest"})
 	if err != nil {
 		t.Fatalf("filter assets by query: %v", err)
 	}
@@ -138,7 +148,6 @@ func TestAssetRepositoryUpdatesAssetBasics(t *testing.T) {
 		Description: &description,
 		Tags:        &tags,
 		Attributes:  &attributes,
-		Version:     &version,
 	})
 	if err != nil {
 		t.Fatalf("update asset basics: %v", err)

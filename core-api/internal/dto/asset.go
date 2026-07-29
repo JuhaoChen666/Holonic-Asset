@@ -2,6 +2,7 @@ package dto
 
 import (
 	"encoding/json"
+	"time"
 
 	domain "github.com/1024XEngineer/Holonic-Asset/internal/model/asset"
 )
@@ -39,14 +40,26 @@ type AssetDetailResponse struct {
 }
 
 type RecordAssetRequest struct {
-	AssetID uint
+	AssetID uint `json:"assetId"`
 }
 
 type RecordAssetResponse struct {
+	RecordID  uint            `json:"recordId"`
+	AssetID   uint            `json:"assetId"`
+	Version   uint            `json:"version"`
+	ContentID uint            `json:"contentId"`
+	CreatedAt time.Time       `json:"createdAt"`
+	Content   json.RawMessage `json:"content,omitempty"`
+}
+
+type AssetRecordResponse = RecordAssetResponse
+
+type GetAssetRecordsResponse struct {
+	Records []AssetRecordResponse `json:"records"`
 }
 
 type CopyAssetRequest struct {
-	AssetID uint
+	AssetID uint `json:"assetId"`
 }
 
 type CopyAssetResponse struct {
@@ -61,7 +74,6 @@ type UpdateAssetRequest struct {
 	Description *string           `json:"description,omitempty"`
 	Tags        *[]string         `json:"tags,omitempty"`
 	Attributes  *json.RawMessage  `json:"attributes,omitempty"`
-	Version     *uint             `json:"version,omitempty"`
 }
 
 type UpdateAssetResponse struct {
@@ -76,10 +88,12 @@ type UpdateAssetResponse struct {
 }
 
 type RollBackAssetRequest struct {
-	AssetID uint
-	Version uint
+	AssetID uint `json:"assetId"`
+	Version uint `json:"version"`
 }
 
 type RollBackAssetResponse struct {
-	Asset *domain.Asset `json:"asset"`
+	AssetID   uint `json:"assetId"`
+	Version   uint `json:"version"`
+	ContentID uint `json:"contentId"`
 }

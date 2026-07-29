@@ -11,10 +11,11 @@ type AssetRouter interface {
 	GetAssets(x *echox.Context, req dto.GetAssetsRequest) (dto.Response, error)
 	Detail(x *echox.Context) (dto.Response, error)
 	Record(x *echox.Context, req dto.RecordAssetRequest) (dto.Response, error)
+	Records(x *echox.Context) (dto.Response, error)
 	CopyAsset(ctx *echox.Context, req dto.CopyAssetRequest) (dto.Response, error)
 	RollBackAsset(ctx *echox.Context, req dto.RollBackAssetRequest) (dto.Response, error)
 
-	Tags(ctx *echox.Context, req dto.UpdateAssetRequest) (dto.Response, error)
+	UpdateAsset(ctx *echox.Context, req dto.UpdateAssetRequest) (dto.Response, error)
 }
 
 // RegisterRoutes registers all HTTP routes.
@@ -25,6 +26,8 @@ func RegisterAssetRoutes(e *echo.Group, r AssetRouter) {
 
 	asset := e.Group("/asset")
 
+	asset.GET("/:asset_id/records", echox.Wrap(r.Records))
+
 	asset.GET("/:asset_id", echox.Wrap(r.Detail))
 
 	asset.POST("/save", echox.WrapReq(r.Record))
@@ -33,5 +36,5 @@ func RegisterAssetRoutes(e *echo.Group, r AssetRouter) {
 
 	asset.POST("/rollback", echox.WrapReq(r.RollBackAsset))
 
-	asset.POST("/tags", echox.WrapReq(r.Tags))
+	asset.POST("/update", echox.WrapReq(r.UpdateAsset))
 }

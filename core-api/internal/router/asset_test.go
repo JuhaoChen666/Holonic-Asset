@@ -19,6 +19,9 @@ type assetRouterStub struct {
 	assetID   string
 	request   dto.GetAssetsRequest
 	update    dto.UpdateAssetRequest
+	record    dto.RecordAssetRequest
+	records   bool
+	rollback  dto.RollBackAssetRequest
 }
 
 func (s *assetRouterStub) GetAssets(context *echox.Context, request dto.GetAssetsRequest) (dto.Response, error) {
@@ -32,9 +35,24 @@ func (s *assetRouterStub) Detail(context *echox.Context) (dto.Response, error) {
 	return dto.NewSuccessResponse(dto.AssetDetailResponse{AssetID: 7}), nil
 }
 
-func (s *assetRouterStub) Tags(_ *echox.Context, request dto.UpdateAssetRequest) (dto.Response, error) {
+func (s *assetRouterStub) UpdateAsset(_ *echox.Context, request dto.UpdateAssetRequest) (dto.Response, error) {
 	s.update = request
 	return dto.NewSuccessResponse(dto.UpdateAssetResponse{AssetID: request.AssetID}), nil
+}
+
+func (s *assetRouterStub) Record(_ *echox.Context, request dto.RecordAssetRequest) (dto.Response, error) {
+	s.record = request
+	return dto.NewSuccessResponse(dto.RecordAssetResponse{AssetID: request.AssetID, Version: 2}), nil
+}
+
+func (s *assetRouterStub) Records(_ *echox.Context) (dto.Response, error) {
+	s.records = true
+	return dto.NewSuccessResponse(dto.GetAssetRecordsResponse{Records: []dto.AssetRecordResponse{}}), nil
+}
+
+func (s *assetRouterStub) RollBackAsset(_ *echox.Context, request dto.RollBackAssetRequest) (dto.Response, error) {
+	s.rollback = request
+	return dto.NewSuccessResponse(dto.RollBackAssetResponse{AssetID: request.AssetID, Version: request.Version}), nil
 }
 
 func TestAssetRoutesBindPathParameters(t *testing.T) {
@@ -79,15 +97,14 @@ func TestAssetRoutesBindPathParameters(t *testing.T) {
 	})
 
 	t.Run("binds asset update", func(t *testing.T) {
-		request := httptest.NewRequest(http.MethodPost, "/api/v1/asset/tags", strings.NewReader(`{
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/asset/update", strings.NewReader(`{
 			"assetId": 7,
 			"name": "hero",
 			"projectId": 42,
 			"type": "character",
 			"description": "main character",
 			"tags": ["player"],
-			"attributes": {"scale": 2},
-			"version": 3
+			"attributes": {"scale": 2}
 		}`))
 		request.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		recorder := httptest.NewRecorder()
@@ -99,6 +116,50 @@ func TestAssetRoutesBindPathParameters(t *testing.T) {
 		}
 		if assetStub.update.AssetID != 7 || assetStub.update.Name == nil || *assetStub.update.Name != "hero" || assetStub.update.Type == nil || *assetStub.update.Type != "character" {
 			t.Fatalf("unexpected asset update: %+v", assetStub.update)
+		}
+	})
+
+	t.Run("binds asset record", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/asset/save", strings.NewReader(`{"assetId":7}`))
+		request.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		recorder := httptest.NewRecorder()
+
+		e.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status %d, got %d: %s", http.StatusOK, recorder.Code, recorder.Body.String())
+		}
+		if assetStub.record.AssetID != 7 {
+			t.Fatalf("unexpected record request: %+v", assetStub.record)
+		}
+	})
+
+	t.Run("binds asset rollback", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/asset/rollback", strings.NewReader(`{"assetId":7,"version":2}`))
+		request.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		recorder := httptest.NewRecorder()
+
+		e.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status %d, got %d: %s", http.StatusOK, recorder.Code, recorder.Body.String())
+		}
+		if assetStub.rollback.AssetID != 7 || assetStub.rollback.Version != 2 {
+			t.Fatalf("unexpected rollback request: %+v", assetStub.rollback)
+		}
+	})
+
+	t.Run("binds asset records", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/asset/7/records", nil)
+		recorder := httptest.NewRecorder()
+
+		e.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status %d, got %d: %s", http.StatusOK, recorder.Code, recorder.Body.String())
+		}
+		if !assetStub.records {
+			t.Fatal("expected asset records route to be called")
 		}
 	})
 

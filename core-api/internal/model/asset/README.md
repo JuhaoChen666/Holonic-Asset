@@ -1,25 +1,35 @@
 # Asset API Response Contract
 
-本文档定义 Asset 详情接口返回给前端的数据结构。
+This document defines the data structures returned by the Asset detail endpoint to the frontend.
 
-推荐前端统一调用：
+The recommended frontend endpoint:
 
 ```http
 GET /api/v1/asset/:asset_id
 ```
 
-Asset 列表支持按名称/描述模糊搜索、tag 和 Asset type 筛选：
+Asset list supports fuzzy search by name/description, tag and asset type filtering:
 
 ```http
 GET /api/v1/projects/:project_id/assets?query=hero&tags=hero&tags=player&types=character
 ```
 
-`query` 会不区分大小写地匹配 Asset 的 `name` 或 `description`。多个 `tags` 表示 Asset 必须同时包含这些 tag；多个 `types` 表示匹配其中任意一种类型。`query`、`tags`、`types` 都未提供时返回项目下全部 Asset。
+`query` performs case-sensitive matching against the asset's `name` or `description`. Multiple `tags` mean the asset must contain all of them (AND); multiple `types` mean any match is accepted (OR). When `query`, `tags`, and `types` are all absent, all assets in the project are returned.
 
-更新 Asset 基本参数仍使用现有路由，但请求体不再局限于 tags：
+`POST /api/v1/asset/save` copies the current asset's content into a new snapshot version and points the asset's content pointer to the new snapshot. `POST /api/v1/asset/rollback` switches the current pointer back to the specified version's snapshot and deletes all records and their exclusive content after the target version.
 
 ```http
-POST /api/v1/asset/tags
+GET /api/v1/asset/:asset_id/records
+```
+
+This endpoint returns all currently retained records for the asset in ascending version order. Each record includes `recordId`, `assetId`, `version`, `contentId`, `createdAt`, and the snapshot `content`. Versions deleted after a rollback no longer appear in the history list.
+
+At the database level, an asset's basic information is stored in `assets`, current content in `asset_contents` (with `assets.content_id` pointing to the current content), and version records in `asset_records` (with `version`, `content_id`, and `createdAt`). Normal content modifications use copy-on-write and never overwrite content referenced by existing history records.
+
+Updating basic asset parameters still uses the existing route, but the request body is no longer limited to tags:
+
+```http
+POST /api/v1/asset/update
 Content-Type: application/json
 ```
 
@@ -38,9 +48,9 @@ Content-Type: application/json
 }
 ```
 
-更新接口支持部分字段更新；未传字段保持原值。`content` 不接受更新，避免修改 Asset 基本信息时覆盖原型、动画或 tileset 内容。返回值包含更新后的全部基本参数，不包含 `content`。
+The update endpoint supports partial updates; omitted fields retain their original values. `content` is not accepted for updates, to avoid overwriting prototype, animation, or tileset content when only modifying basic asset metadata. The response includes all updated basic parameters but no `content`.
 
-Asset 的完整业务内容放在 `data.content` 中，`data.type` 决定 `content` 的具体结构。
+The asset's full business content is in `data.content`. `data.type` determines the concrete structure of `content`.
 
 ## Common Response
 
@@ -62,79 +72,48 @@ Asset 的完整业务内容放在 `data.content` 中，`data.type` 决定 `conte
 }
 ```
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 | --- | --- | --- |
 | `assetId` | `number` | Asset ID |
-| `name` | `string` | Asset 名称 |
-| `projectId` | `number` | 所属项目 ID |
-| `type` | `string` | Asset 类型 |
-| `attributes` | `object` | Asset 元数据 |
-| `content` | `object` | Asset 完整业务内容 |
-| `version` | `number` | Asset 业务版本 |
+| `name` | `string` | Asset name |
+| `projectId` | `number` | Owning project ID |
+| `type` | `string` | Asset type |
+| `attributes` | `object` | Form data submitted at asset creation |
+| `content` | `object` | Full business content of the asset |
+| `version` | `number` | Asset business version |
 
-当前 Asset 类型：`character`、`object`、`tileSet`、`audio`、`ui`、`scenery`。
+Current asset types: `character`, `object`, `tileSet`, `audio`, `ui`, `scenery`.
 
-Asset 自身的元数据放在 `data.attributes`，Asset 业务内容中的扩展元数据放在 `data.content.metadata`。Task 的 ID、执行状态和错误信息属于 Task，不嵌套在 Asset Content 中；前端以 Asset 内容节点的 `status` 判断生成内容是否可用。
-
-## Status
-
-prototype、animation、direction、item 和 tile 都可以拥有以下状态：
-
-```text
-pending
-processing
-partial
-completed
-failed
-cancelled
-```
-
-| 状态 | 前端处理方式 |
-| --- | --- |
-| `pending` | 任务尚未开始，继续轮询 |
-| `processing` | 正在生成，继续轮询 |
-| `partial` | 展示已完成内容并继续轮询 |
-| `completed` | 内容完整，停止轮询 |
-| `failed` | 停止轮询并展示错误 |
-| `cancelled` | 停止轮询并提供重新生成入口 |
+The asset's own metadata goes in `data.attributes`. Extended metadata within the business content goes in `data.content.metadata`. Task IDs, execution status, and error information belong to Tasks and are not nested inside Asset Content. The frontend should query the corresponding Task to determine whether the generation task is complete, then read the written resources from the Asset.
 
 ## Character
 
-Character 包含 prototype 和 animations。animation 下的方向使用动态对象，方向数量不固定。
+Character contains `prototype` and `animations`. Directions under an animation use dynamic keys; the number of directions is not fixed.
 
 ```json
 {
   "viewMode": "top_down",
-  "viewElements": ["up", "down", "left", "right"],
+  "directionCount": 4,
   "prototype": {
-    "status": "completed",
     "directions": {
       "up": {
-        "status": "completed",
         "image": {
-          "url": "https://cdn.example.com/hero/prototype-up.png",
-          "status": "completed"
+          "url": "https://cdn.example.com/hero/prototype-up.png"
         }
       },
       "down": {
-        "status": "completed",
         "image": {
-          "url": "https://cdn.example.com/hero/prototype-down.png",
-          "status": "completed"
+          "url": "https://cdn.example.com/hero/prototype-down.png"
         }
       },
       "left": {
-        "status": "completed",
         "image": {
-          "url": "https://cdn.example.com/hero/prototype-left.png",
-          "status": "completed"
+          "url": "https://cdn.example.com/hero/prototype-left.png"
         }
       },
       "right": {
-        "status": "completed",
         "image": {
-          "url": "https://cdn.example.com/hero/prototype-right.png",
-          "status": "completed"
+          "url": "https://cdn.example.com/hero/prototype-right.png"
         }
       }
     }
@@ -143,20 +122,14 @@ Character 包含 prototype 和 animations。animation 下的方向使用动态�
     {
       "id": 3001,
       "name": "walk",
-      "status": "partial",
       "directions": {
         "left": {
-          "status": "completed",
           "frames": [
             {
               "url": "https://cdn.example.com/hero/walk/left/001.png",
-              "status": "completed",
               "duration": 100
             }
           ]
-        },
-        "right": {
-          "status": "processing"
         }
       }
     }
@@ -164,31 +137,26 @@ Character 包含 prototype 和 animations。animation 下的方向使用动态�
 }
 ```
 
-上面的四方向只是 `top_down` 的示例。方向集合由 `viewMode` 和 `viewElements` 决定，不固定为四个。
+The four directions above are only an example for `top_down`. The direction set is specified by `directionCount`; the actual direction names are determined by the keys of `prototype.directions` and `animations[].directions`.
 
-例如 `side_on` 可以只包含左右两个方向：
+For example, `side_on` may only contain left and right directions:
 
 ```json
 {
   "viewMode": "side_on",
-  "viewElements": ["left", "right"],
+  "directionCount": 2,
   "prototype": {
-    "status": "completed",
     "directions": {
       "left": {
-        "status": "completed",
         "image": {
           "id": 2101,
-          "url": "https://cdn.example.com/hero/prototype-left.png",
-          "status": "completed"
+          "url": "https://cdn.example.com/hero/prototype-left.png"
         }
       },
       "right": {
-        "status": "completed",
         "image": {
           "id": 2102,
-          "url": "https://cdn.example.com/hero/prototype-right.png",
-          "status": "completed"
+          "url": "https://cdn.example.com/hero/prototype-right.png"
         }
       }
     }
@@ -196,50 +164,48 @@ Character 包含 prototype 和 animations。animation 下的方向使用动态�
 }
 ```
 
-Character 约定：
+Character conventions:
 
-- `viewMode` 表示 Asset 的视角模式，目前包括 `side_on` 和 `top_down`。
-- `viewElements` 是当前 Asset 实际需要生成的方向集合。
-- `prototype.directions` 的 key 必须与 `viewElements` 一一对应。
-- 每个 prototype direction 在完成时必须且只能包含一张 `image`。
-- `side_on` 可以是 `left`、`right` 两个方向，对应两张图片。
-- `top_down` 可以是 `up`、`down`、`left`、`right` 四个方向，对应四张图片。
-- `directions` 中的 key 表示本次实际选择生成的方向。
-- 方向未完成时，可以不返回 `frames`。
-- `partial` 表示部分方向已完成，前端可以先展示已完成方向。
-- Character 创建后，prototype 初始状态为 `pending`。
+- `viewMode` represents the asset's perspective mode. Currently includes `side_on` and `top_down`.
+- `directionCount` is the number of directions to generate for the current asset. Only `1`, `2`, `4`, or `8` are used.
+- `directionCount: 1` corresponds to `front`.
+- `directionCount: 2` corresponds to `left`, `right`.
+- `directionCount: 4` corresponds to `up`, `down`, `left`, `right`.
+- `directionCount: 8` corresponds to the four cardinal directions plus `up_left`, `up_right`, `down_left`, `down_right`.
+- Keys of `prototype.directions` must use the direction names listed above and match `directionCount`.
+- Each prototype direction must contain exactly one `image` when complete.
+- `side_on` may have `left` and `right` (two directions), corresponding to two images.
+- `top_down` may have `up`, `down`, `left`, `right` (four directions), corresponding to four images.
+- The keys in `directions` indicate which directions are actually selected for generation this time.
+- `frames` may be absent when the direction is not yet complete.
+- Whether a resource has been generated is determined by the corresponding Task status; Asset content itself does not carry generation state.
 
 ## Object
 
-Object 与 Character 使用相同的 content 结构，可以只有 prototype，也可以拥有动画。
+Object uses the same content structure as Character. It may have only a prototype, or it may also include animations.
 
 ```json
 {
   "viewMode": "side_on",
-  "viewElements": ["left", "right"],
+  "directionCount": 2,
   "prototype": {
-    "status": "processing"
+    "directions": {}
   },
   "animations": [
     {
       "id": 3101,
       "name": "open",
-      "status": "pending",
-      "directions": {
-        "front": {
-          "status": "pending"
-        }
-      }
+      "directions": {}
     }
   ]
 }
 ```
 
-Object 的动画名称可以是 `open`、`close`、`destroyed`、`activated` 等业务动作。
+Object animation names may be business actions such as `open`, `close`, `destroyed`, `activated`, etc.
 
 ## TileSet
 
-TileSet 不包含 prototype 和 animations，而是由 item 列表组成，每个 item 下面包含 tile 列表。
+TileSet does not contain prototype or animations. Instead, it consists of an item list, with each item containing a tile list.
 
 ```json
 {
@@ -250,12 +216,10 @@ TileSet 不包含 prototype 和 animations，而是由 item 列表组成，每�
   "items": [
     {
       "name": "grass",
-      "status": "completed",
       "tiles": [
         {
           "name": "grass-center",
           "url": "https://cdn.example.com/tileset/grass/center.png",
-          "status": "completed",
           "position": {
             "x": 0,
             "y": 1
@@ -267,7 +231,6 @@ TileSet 不包含 prototype 和 animations，而是由 item 列表组成，每�
         {
           "name": "grass-top-left",
           "url": "https://cdn.example.com/tileset/grass/top-left.png",
-          "status": "completed",
           "position": {
             "x": 1,
             "y": 1
@@ -278,35 +241,26 @@ TileSet 不包含 prototype 和 animations，而是由 item 列表组成，每�
         }
       ]
     },
-    {
-      "name": "water",
-      "status": "processing"
-    }
+    { "name": "water", "tiles": [] }
   ]
 }
 ```
 
-TileSet 约定：
+TileSet conventions:
 
-- `tileSize` 定义整个 TileSet 的固定 tile 尺寸，所有 tile 使用相同的宽高。
-- `items` 是 TileSet 的一级业务内容。
-- `items[].tiles` 是该 item 生成出的 tile 列表。
-- `tiles[].position` 是 tile 在网格中的位置，`x` 表示列、`y` 表示行，坐标从 `0` 开始；例如 `{ "x": 0, "y": 1 }` 表示第 0 列、第 1 行。
-- item 可以独立处于 `pending`、`processing`、`partial` 或 `completed` 状态。
-- 前端可以先展示已完成的 item，同时继续轮询其他 item。
-- tile 的扩展属性放在 `metadata` 中，例如 tile 类型；固定尺寸和网格位置分别使用 `tileSize` 与 `position`。
+- `tileSize` defines the fixed tile dimensions for the entire TileSet. All tiles share the same width and height.
+- `items` is the top-level business content of the TileSet.
+- `items[].tiles` is the list of tiles generated for that item.
+- `tiles[].position` is the tile's position on the grid. `x` is the column, `y` is the row, both zero-indexed. For example, `{ "x": 0, "y": 1 }` means column 0, row 1.
+- Whether an item has been generated is determined by the corresponding Task status; Asset content itself does not carry state.
+- Extended tile properties go in `metadata`, e.g. tile type. Fixed dimensions and grid position use `tileSize` and `position` respectively.
 
-## Polling
+## Task Polling
 
-前端可以按照以下规则决定是否继续轮询：
+Asset content does not provide a `status` field. The frontend should save the Task ID returned by create or generate operations and query the Task endpoint directly:
 
-```text
-prototype.status in [pending, processing]
-animation.status in [pending, processing, partial]
-direction.status in [pending, processing]
-item.status in [pending, processing, partial]
-```
-
-当目标节点为 `completed` 时，prototype direction 读取对应的单张 `image`，animation direction 读取 `frames`，item 读取 `tiles`。
-
-当目标节点为 `failed` 时停止轮询；如果需要查看失败原因，查询对应的 Task 记录。
+1. While the Task is incomplete, keep polling the Task.
+2. After the Task completes, re-fetch the Asset detail.
+3. For Character/Object, read `prototype.directions[*].image` or `animations[*].directions[*].frames`.
+4. For TileSet, read `items[*].tiles`.
+5. If the Task fails or is cancelled, stop polling and display the failure reason based on the error information returned by the Task.

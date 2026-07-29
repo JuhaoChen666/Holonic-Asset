@@ -32,6 +32,31 @@ type assetServiceStub struct {
 	update       *domain.AssetUpdate
 }
 
+type assetRecordServiceStub struct {
+	service.AssetRecordService
+	record          *domain.AssetRecord
+	recordRequest   *domain.AssetRecord
+	records         []domain.AssetRecord
+	rollbackAsset   uint
+	rollbackVersion uint
+	rollbackResult  *domain.AssetRecord
+}
+
+func (s *assetRecordServiceStub) CreateRecord(_ context.Context, record *domain.AssetRecord) (*domain.AssetRecord, error) {
+	s.recordRequest = record
+	return s.record, nil
+}
+
+func (s *assetRecordServiceStub) GetRecordHistory(_ context.Context, _ uint) ([]domain.AssetRecord, error) {
+	return s.records, nil
+}
+
+func (s *assetRecordServiceStub) RollBackRecord(_ context.Context, assetID uint, version uint) (*domain.AssetRecord, error) {
+	s.rollbackAsset = assetID
+	s.rollbackVersion = version
+	return s.rollbackResult, nil
+}
+
 func (s *assetServiceStub) GetAssets(_ context.Context, projectID uint, filter domain.AssetListFilter) ([]domain.Asset, error) {
 	s.projectID = projectID
 	s.filter = filter
@@ -128,7 +153,7 @@ func TestAssetHandlerUpdatesAssetBasicsWithoutContent(t *testing.T) {
 	}}
 	h := handler.NewHandler(serviceStub, nil)
 
-	response, err := h.Tags(newAssetHandlerContext("asset_id", "7"), dto.UpdateAssetRequest{
+	response, err := h.UpdateAsset(newAssetHandlerContext("asset_id", "7"), dto.UpdateAssetRequest{
 		AssetID:     7,
 		Name:        &name,
 		ProjectID:   &projectID,
@@ -136,7 +161,6 @@ func TestAssetHandlerUpdatesAssetBasicsWithoutContent(t *testing.T) {
 		Description: &description,
 		Tags:        &tags,
 		Attributes:  &attributes,
-		Version:     &version,
 	})
 	if err != nil {
 		t.Fatalf("update asset basics: %v", err)
@@ -147,6 +171,66 @@ func TestAssetHandlerUpdatesAssetBasicsWithoutContent(t *testing.T) {
 	data, ok := response.Data.(dto.UpdateAssetResponse)
 	if !ok || data.AssetID != 7 || data.Name != name || string(data.Attributes) != string(attributes) {
 		t.Fatalf("unexpected update response: %+v", response.Data)
+	}
+}
+
+func TestAssetHandlerRecordReturnsCreatedSnapshot(t *testing.T) {
+	recordService := &assetRecordServiceStub{record: &domain.AssetRecord{
+		ID:        15,
+		AssetID:   7,
+		Version:   3,
+		ContentID: 21,
+	}}
+	h := handler.NewHandler(&assetServiceStub{}, recordService)
+
+	response, err := h.Record(newAssetHandlerContext("asset_id", "7"), dto.RecordAssetRequest{AssetID: 7})
+	if err != nil {
+		t.Fatalf("record asset: %v", err)
+	}
+	if recordService.recordRequest == nil || recordService.recordRequest.AssetID != 7 {
+		t.Fatalf("unexpected record request: %+v", recordService.recordRequest)
+	}
+	data, ok := response.Data.(dto.RecordAssetResponse)
+	if !ok || data.RecordID != 15 || data.AssetID != 7 || data.Version != 3 || data.ContentID != 21 {
+		t.Fatalf("unexpected record response: %+v", response.Data)
+	}
+}
+
+func TestAssetHandlerRollbackUsesRequestedVersion(t *testing.T) {
+	recordService := &assetRecordServiceStub{rollbackResult: &domain.AssetRecord{
+		AssetID:   7,
+		Version:   2,
+		ContentID: 9,
+	}}
+	h := handler.NewHandler(&assetServiceStub{}, recordService)
+
+	response, err := h.RollBackAsset(newAssetHandlerContext("asset_id", "7"), dto.RollBackAssetRequest{AssetID: 7, Version: 2})
+	if err != nil {
+		t.Fatalf("rollback asset: %v", err)
+	}
+	if recordService.rollbackAsset != 7 || recordService.rollbackVersion != 2 {
+		t.Fatalf("unexpected rollback request: asset=%d version=%d", recordService.rollbackAsset, recordService.rollbackVersion)
+	}
+	data, ok := response.Data.(dto.RollBackAssetResponse)
+	if !ok || data.AssetID != 7 || data.Version != 2 || data.ContentID != 9 {
+		t.Fatalf("unexpected rollback response: %+v", response.Data)
+	}
+}
+
+func TestAssetHandlerRecordsReturnsHistory(t *testing.T) {
+	recordService := &assetRecordServiceStub{records: []domain.AssetRecord{
+		{ID: 15, AssetID: 7, Version: 1, ContentID: 21},
+		{ID: 16, AssetID: 7, Version: 2, ContentID: 22},
+	}}
+	h := handler.NewHandler(&assetServiceStub{}, recordService)
+
+	response, err := h.Records(newAssetHandlerContext("asset_id", "7"))
+	if err != nil {
+		t.Fatalf("get asset records: %v", err)
+	}
+	data, ok := response.Data.(dto.GetAssetRecordsResponse)
+	if !ok || len(data.Records) != 2 || data.Records[1].Version != 2 || data.Records[1].ContentID != 22 {
+		t.Fatalf("unexpected asset record history: %+v", response.Data)
 	}
 }
 

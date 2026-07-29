@@ -14,13 +14,63 @@ import (
 
 type jsonAssetDaoStub struct {
 	dao.AssetDao
-	asset       dao.Asset
-	created     dao.Asset
-	updatedID   uint
-	updatedBody domain.AssetContent
+	asset          dao.Asset
+	created        dao.Asset
+	updatedAsset   uint
+	updatedVersion uint
+	updatedContent uint
+}
+
+type jsonAssetRecordDaoStub struct {
+	dao.AssetRecordDao
+	records map[uint]dao.AssetRecord
+	nextID  uint
+}
+
+func (s *jsonAssetRecordDaoStub) CreateAssetRecord(_ context.Context, record *dao.AssetRecord) (uint, error) {
+	if record.ID == 0 {
+		s.nextID++
+		record.ID = s.nextID
+	}
+	s.records[record.ID] = *record
+	return record.ID, nil
+}
+
+type jsonAssetContentDaoStub struct {
+	dao.AssetContentDao
+	contents map[uint]dao.AssetContent
+	nextID   uint
+}
+
+func (s *jsonAssetContentDaoStub) CreateAssetContent(_ context.Context, content *dao.AssetContent) (dao.AssetContent, error) {
+	if content.ID == 0 {
+		s.nextID++
+		content.ID = s.nextID
+	}
+	s.contents[content.ID] = *content
+	return *content, nil
+}
+
+func (s *jsonAssetContentDaoStub) GetAssetContent(_ context.Context, id uint) (dao.AssetContent, error) {
+	return s.contents[id], nil
+}
+
+func (s *jsonAssetContentDaoStub) DeleteAssetContents(_ context.Context, ids []uint) error {
+	for _, id := range ids {
+		delete(s.contents, id)
+	}
+	return nil
 }
 
 func (s *jsonAssetDaoStub) GetAssetDetail(_ context.Context, _ uint) (dao.Asset, error) {
+	return s.asset, nil
+}
+
+func (s *jsonAssetDaoStub) GetAsset(_ context.Context, _ uint) (dao.Asset, error) {
+	return s.asset, nil
+}
+
+func (s *jsonAssetDaoStub) GetAssetForUpdate(_ context.Context, _ uint) (dao.Asset, error) {
 	return s.asset, nil
 }
 
@@ -30,13 +80,10 @@ func (s *jsonAssetDaoStub) CreateAsset(_ context.Context, asset *dao.Asset) (dao
 	return s.created, nil
 }
 
-func (s *jsonAssetDaoStub) UpdateContent(_ context.Context, id uint, content json.RawMessage) error {
-	s.updatedID = id
-	updated, err := (&domain.Asset{Content: content}).DecodeContent()
-	if err != nil {
-		return err
-	}
-	s.updatedBody = updated
+func (s *jsonAssetDaoStub) UpdateAssetCurrentContent(_ context.Context, assetID uint, version uint, contentID uint) error {
+	s.updatedAsset = assetID
+	s.updatedVersion = version
+	s.updatedContent = contentID
 	return nil
 }
 
@@ -46,24 +93,19 @@ func TestAssetRepositoryReadsAssetContent(t *testing.T) {
 	leftURL := "https://cdn.example/prototype-left.png"
 	rightURL := "https://cdn.example/prototype-right.png"
 	content := domain.NewAssetContent(domain.AssetTypeCharacter)
-	content.ViewElements = []string{"up", "down", "left", "right"}
-	content.Prototype.Status = domain.ContentStatusCompleted
+	content.DirectionCount = 4
 	content.Prototype.Directions = map[string]domain.PrototypeDirection{
 		"up": {
-			Status: domain.ContentStatusCompleted,
-			Image:  &domain.ImageResource{URL: &upURL, Status: domain.ContentStatusCompleted},
+			Image: &domain.ImageResource{URL: &upURL},
 		},
 		"down": {
-			Status: domain.ContentStatusCompleted,
-			Image:  &domain.ImageResource{URL: &downURL, Status: domain.ContentStatusCompleted},
+			Image: &domain.ImageResource{URL: &downURL},
 		},
 		"left": {
-			Status: domain.ContentStatusCompleted,
-			Image:  &domain.ImageResource{URL: &leftURL, Status: domain.ContentStatusCompleted},
+			Image: &domain.ImageResource{URL: &leftURL},
 		},
 		"right": {
-			Status: domain.ContentStatusCompleted,
-			Image:  &domain.ImageResource{URL: &rightURL, Status: domain.ContentStatusCompleted},
+			Image: &domain.ImageResource{URL: &rightURL},
 		},
 	}
 	payload, err := domain.EncodeContent(content)
@@ -71,12 +113,18 @@ func TestAssetRepositoryReadsAssetContent(t *testing.T) {
 		t.Fatalf("encode content: %v", err)
 	}
 
-	repo := &repository.AssetRepositoryImpl{AssetDao: &jsonAssetDaoStub{asset: dao.Asset{
-		ID:      7,
-		Version: 2,
-		Type:    string(domain.AssetTypeCharacter),
-		Content: datatypes.JSON(payload),
-	}}}
+	contentID := uint(11)
+	repo := &repository.AssetRepositoryImpl{
+		AssetDao: &jsonAssetDaoStub{asset: dao.Asset{
+			ID:        7,
+			Version:   2,
+			Type:      string(domain.AssetTypeCharacter),
+			ContentID: &contentID,
+		}},
+		ContentDao: &jsonAssetContentDaoStub{contents: map[uint]dao.AssetContent{
+			contentID: {ID: contentID, AssetID: 7, Content: datatypes.JSON(payload)},
+		}},
+	}
 	asset, err := repo.GetAssetDetail(context.Background(), 7)
 	if err != nil {
 		t.Fatalf("get asset: %v", err)
@@ -85,14 +133,13 @@ func TestAssetRepositoryReadsAssetContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode asset: %v", err)
 	}
-	if decoded.Prototype == nil || decoded.Prototype.Status != domain.ContentStatusCompleted || len(decoded.Prototype.Directions) != 4 || decoded.Prototype.Directions["up"].Image == nil || decoded.Prototype.Directions["up"].Image.URL == nil || *decoded.Prototype.Directions["up"].Image.URL != "https://cdn.example/prototype-up.png" {
+	if decoded.Prototype == nil || len(decoded.Prototype.Directions) != 4 || decoded.Prototype.Directions["up"].Image == nil || decoded.Prototype.Directions["up"].Image.URL == nil || *decoded.Prototype.Directions["up"].Image.URL != "https://cdn.example/prototype-up.png" {
 		t.Fatalf("unexpected asset content: %+v", decoded)
 	}
 }
 
-func TestAssetRepositoryReturnsGeneratingAssetContent(t *testing.T) {
+func TestAssetRepositoryReturnsAssetContentWithoutGenerationState(t *testing.T) {
 	content := domain.NewAssetContent(domain.AssetTypeCharacter)
-	content.Prototype.Status = domain.ContentStatusProcessing
 	payload, err := domain.EncodeContent(content)
 	if err != nil {
 		t.Fatalf("encode content: %v", err)
@@ -112,14 +159,16 @@ func TestAssetRepositoryReturnsGeneratingAssetContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode asset: %v", err)
 	}
-	if decoded.Prototype == nil || decoded.Prototype.Status != domain.ContentStatusProcessing {
-		t.Fatalf("unexpected generating content: %+v", decoded)
+	if decoded.Prototype == nil {
+		t.Fatalf("unexpected asset content: %+v", decoded)
 	}
 }
 
-func TestAssetRepositoryCreatesCharacterWithPendingPrototype(t *testing.T) {
+func TestAssetRepositoryCreatesCharacterWithPrototype(t *testing.T) {
 	daoStub := &jsonAssetDaoStub{}
-	repo := &repository.AssetRepositoryImpl{AssetDao: daoStub}
+	contentDao := &jsonAssetContentDaoStub{contents: map[uint]dao.AssetContent{}, nextID: 10}
+	recordDao := &jsonAssetRecordDaoStub{records: map[uint]dao.AssetRecord{}}
+	repo := &repository.AssetRepositoryImpl{AssetDao: daoStub, ContentDao: contentDao, RecordDao: recordDao}
 
 	created, err := repo.CreateCharacterAsset(context.Background(), &domain.Asset{
 		Name:      "hero",
@@ -135,8 +184,8 @@ func TestAssetRepositoryCreatesCharacterWithPendingPrototype(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode created content: %v", err)
 	}
-	if content.Prototype == nil || content.Prototype.Status != domain.ContentStatusPending {
-		t.Fatalf("expected pending prototype: %+v", content)
+	if content.Prototype == nil {
+		t.Fatalf("expected prototype: %+v", content)
 	}
 }
 
@@ -145,37 +194,48 @@ func TestAssetRepositoryUpdatesDynamicAnimationDirection(t *testing.T) {
 	content.Animations = []domain.Animation{{
 		ID:         9,
 		Name:       "walk",
-		Status:     domain.ContentStatusPending,
-		Directions: map[string]domain.AnimationDirection{"left": {Status: domain.ContentStatusPending}},
+		Directions: map[string]domain.AnimationDirection{"left": {}},
 	}}
 	payload, err := domain.EncodeContent(content)
 	if err != nil {
 		t.Fatalf("encode content: %v", err)
 	}
+	contentID := uint(11)
 	daoStub := &jsonAssetDaoStub{asset: dao.Asset{
-		ID:      7,
-		Type:    string(domain.AssetTypeCharacter),
-		Content: datatypes.JSON(payload),
+		ID:        7,
+		Type:      string(domain.AssetTypeCharacter),
+		ContentID: &contentID,
+		Content:   datatypes.JSON(payload),
 	}}
-	repo := &repository.AssetRepositoryImpl{AssetDao: daoStub}
+	contentDao := &jsonAssetContentDaoStub{contents: map[uint]dao.AssetContent{
+		contentID: {ID: contentID, AssetID: 7, Content: datatypes.JSON(payload)},
+	}}
+	repo := &repository.AssetRepositoryImpl{
+		AssetDao:   daoStub,
+		ContentDao: contentDao,
+		RecordDao:  &jsonAssetRecordDaoStub{records: map[uint]dao.AssetRecord{}, nextID: 20},
+	}
 
 	err = repo.UpdateAnimationDirection(
 		context.Background(),
 		7,
 		9,
 		"right",
-		domain.ContentStatusCompleted,
-		[]domain.Frame{{Status: domain.ContentStatusCompleted}},
+		[]domain.Frame{{URL: new("https://cdn.example/walk-right-1.png")}},
 	)
 	if err != nil {
 		t.Fatalf("update animation direction: %v", err)
 	}
-	if daoStub.updatedID != 7 {
-		t.Fatalf("unexpected content update: id=%d", daoStub.updatedID)
+	if daoStub.updatedAsset != 7 || daoStub.updatedContent == contentID {
+		t.Fatalf("unexpected content pointer update: %+v", daoStub)
 	}
-	animation := daoStub.updatedBody.Animations[0]
-	if animation.Status != domain.ContentStatusProcessing || animation.Directions["right"].Status != domain.ContentStatusCompleted {
-		t.Fatalf("unexpected animation state: %+v", animation)
+	updated, err := (&domain.Asset{Content: json.RawMessage(contentDao.contents[daoStub.updatedContent].Content)}).DecodeContent()
+	if err != nil {
+		t.Fatalf("decode updated content: %v", err)
+	}
+	animation := updated.Animations[0]
+	if len(animation.Directions["right"].Frames) != 1 || animation.Directions["right"].Frames[0].URL == nil {
+		t.Fatalf("unexpected animation content: %+v", animation)
 	}
 }
 
@@ -185,12 +245,21 @@ func TestAssetRepositoryCreatesAnimationInsideAssetContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode content: %v", err)
 	}
+	contentID := uint(11)
 	daoStub := &jsonAssetDaoStub{asset: dao.Asset{
-		ID:      7,
-		Type:    string(domain.AssetTypeCharacter),
-		Content: datatypes.JSON(payload),
+		ID:        7,
+		Type:      string(domain.AssetTypeCharacter),
+		ContentID: &contentID,
+		Content:   datatypes.JSON(payload),
 	}}
-	repo := &repository.AssetRepositoryImpl{AssetDao: daoStub}
+	contentDao := &jsonAssetContentDaoStub{contents: map[uint]dao.AssetContent{
+		contentID: {ID: contentID, AssetID: 7, Content: datatypes.JSON(payload)},
+	}}
+	repo := &repository.AssetRepositoryImpl{
+		AssetDao:   daoStub,
+		ContentDao: contentDao,
+		RecordDao:  &jsonAssetRecordDaoStub{records: map[uint]dao.AssetRecord{}, nextID: 20},
+	}
 
 	animationID, err := repo.CreateAnimation(context.Background(), 7, "walk")
 	if err != nil {
@@ -199,39 +268,56 @@ func TestAssetRepositoryCreatesAnimationInsideAssetContent(t *testing.T) {
 	if animationID != 1 {
 		t.Fatalf("expected animation ID 1, got %d", animationID)
 	}
-	if len(daoStub.updatedBody.Animations) != 1 || daoStub.updatedBody.Animations[0].Name != "walk" || daoStub.updatedBody.Animations[0].Status != domain.ContentStatusPending {
-		t.Fatalf("unexpected animation content: %+v", daoStub.updatedBody.Animations)
+	updated, err := (&domain.Asset{Content: json.RawMessage(contentDao.contents[daoStub.updatedContent].Content)}).DecodeContent()
+	if err != nil {
+		t.Fatalf("decode updated content: %v", err)
+	}
+	if len(updated.Animations) != 1 || updated.Animations[0].Name != "walk" {
+		t.Fatalf("unexpected animation content: %+v", updated.Animations)
 	}
 }
 
 func TestAssetRepositoryUpdatesOnePrototypeImagePerDirection(t *testing.T) {
 	content := domain.NewAssetContent(domain.AssetTypeCharacter)
-	content.ViewElements = []string{"up", "down", "left", "right"}
+	content.DirectionCount = 4
 	payload, err := domain.EncodeContent(content)
 	if err != nil {
 		t.Fatalf("encode content: %v", err)
 	}
+	contentID := uint(11)
 	daoStub := &jsonAssetDaoStub{asset: dao.Asset{
-		ID:      7,
-		Type:    string(domain.AssetTypeCharacter),
-		Content: datatypes.JSON(payload),
+		ID:        7,
+		Type:      string(domain.AssetTypeCharacter),
+		ContentID: &contentID,
+		Content:   datatypes.JSON(payload),
 	}}
-	repo := &repository.AssetRepositoryImpl{AssetDao: daoStub}
+	contentDao := &jsonAssetContentDaoStub{contents: map[uint]dao.AssetContent{
+		contentID: {ID: contentID, AssetID: 7, Content: datatypes.JSON(payload)},
+	}}
+	repo := &repository.AssetRepositoryImpl{
+		AssetDao:   daoStub,
+		ContentDao: contentDao,
+		RecordDao:  &jsonAssetRecordDaoStub{records: map[uint]dao.AssetRecord{}, nextID: 20},
+	}
 
 	err = repo.UpdatePrototypeImages(context.Background(), 7, map[string]domain.ImageResource{
-		"up":    {Status: domain.ContentStatusCompleted},
-		"down":  {Status: domain.ContentStatusCompleted},
-		"left":  {Status: domain.ContentStatusCompleted},
-		"right": {Status: domain.ContentStatusCompleted},
+		"up":    {URL: new("https://cdn.example/prototype-up.png")},
+		"down":  {URL: new("https://cdn.example/prototype-down.png")},
+		"left":  {URL: new("https://cdn.example/prototype-left.png")},
+		"right": {URL: new("https://cdn.example/prototype-right.png")},
 	})
 	if err != nil {
 		t.Fatalf("update prototype images: %v", err)
 	}
-	prototype := daoStub.updatedBody.Prototype
-	if prototype == nil || prototype.Status != domain.ContentStatusCompleted || len(prototype.Directions) != 4 {
+	updated, err := (&domain.Asset{Content: json.RawMessage(contentDao.contents[daoStub.updatedContent].Content)}).DecodeContent()
+	if err != nil {
+		t.Fatalf("decode updated content: %v", err)
+	}
+	prototype := updated.Prototype
+	if prototype == nil || len(prototype.Directions) != 4 {
 		t.Fatalf("unexpected prototype content: %+v", prototype)
 	}
-	for _, direction := range content.ViewElements {
+	for _, direction := range domain.DirectionsForCount(content.DirectionCount) {
 		if prototype.Directions[direction].Image == nil {
 			t.Fatalf("expected prototype image for direction %q", direction)
 		}

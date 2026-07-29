@@ -7,6 +7,7 @@ import (
 
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Asset struct {
@@ -17,7 +18,8 @@ type Asset struct {
 	Description string
 	Tags        []string        `json:"tags" gorm:"serializer:json"`
 	Attributes  json.RawMessage `json:"attributes" gorm:"serializer:json"`
-	Content     datatypes.JSON  `json:"content" gorm:"type:jsonb"`
+	ContentID   *uint           `gorm:"index"`
+	Content     datatypes.JSON  `json:"content" gorm:"-"`
 	Version     uint
 }
 
@@ -28,20 +30,27 @@ type AssetUpdate struct {
 	Description *string
 	Tags        *[]string
 	Attributes  *json.RawMessage
-	Version     *uint
 }
 
 type AssetDao interface {
 	CreateAsset(ctx context.Context, asset *Asset) (Asset, error)
 	GetAssetsByProjectID(ctx context.Context, projectID uint) ([]Asset, error)
-	GetAssetDetail(ctx context.Context, id uint) (Asset, error)
+	GetAsset(ctx context.Context, id uint) (Asset, error)
+	GetAssetForUpdate(ctx context.Context, id uint) (Asset, error)
 	UpdateAsset(ctx context.Context, id uint, update *AssetUpdate) (Asset, error)
-	UpdateAssetVersion(ctx context.Context, id uint, version uint) error
-	UpdateContent(ctx context.Context, id uint, content json.RawMessage) error
+	UpdateAssetCurrentContent(ctx context.Context, id uint, version uint, contentID uint) error
 }
 
 type AssetDaoImpl struct {
 	DB *gorm.DB
+}
+
+func (a *AssetDaoImpl) WithDB(db *gorm.DB) AssetDao {
+	return &AssetDaoImpl{DB: db}
+}
+
+func (a *AssetDaoImpl) DBHandle() *gorm.DB {
+	return a.DB
 }
 
 func (a *AssetDaoImpl) GetAssetsByProjectID(ctx context.Context, projectID uint) ([]Asset, error) {
@@ -67,9 +76,15 @@ func (a *AssetDaoImpl) CreateAsset(ctx context.Context, asset *Asset) (Asset, er
 	return *asset, nil
 }
 
-func (a *AssetDaoImpl) GetAssetDetail(ctx context.Context, id uint) (Asset, error) {
+func (a *AssetDaoImpl) GetAsset(ctx context.Context, id uint) (Asset, error) {
 	var asset Asset
 	err := a.DB.WithContext(ctx).First(&asset, id).Error
+	return asset, err
+}
+
+func (a *AssetDaoImpl) GetAssetForUpdate(ctx context.Context, id uint) (Asset, error) {
+	var asset Asset
+	err := a.DB.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).First(&asset, id).Error
 	return asset, err
 }
 
@@ -97,10 +112,6 @@ func (a *AssetDaoImpl) UpdateAsset(ctx context.Context, id uint, update *AssetUp
 	if update.Attributes != nil {
 		values["attributes"] = *update.Attributes
 	}
-	if update.Version != nil {
-		values["version"] = *update.Version
-	}
-
 	query := a.DB.WithContext(ctx).Model(&Asset{}).Where("id = ?", id)
 	if len(values) > 0 {
 		if result := query.Updates(values); result.Error != nil {
@@ -117,30 +128,23 @@ func (a *AssetDaoImpl) UpdateAsset(ctx context.Context, id uint, update *AssetUp
 	return asset, nil
 }
 
-func (a *AssetDaoImpl) UpdateAssetVersion(ctx context.Context, id uint, version uint) error {
+func (a *AssetDaoImpl) UpdateAssetCurrentContent(
+	ctx context.Context,
+	id uint,
+	version uint,
+	contentID uint,
+) error {
 	result := a.DB.WithContext(ctx).
 		Model(&Asset{}).
 		Where("id = ?", id).
-		Update("version", version)
+		Updates(map[string]any{
+			"version":    version,
+			"content_id": contentID,
+		})
 	if result.Error != nil {
-		return fmt.Errorf("dao: update version for asset %d: %w", id, result.Error)
+		return fmt.Errorf("dao: update current content for asset %d: %w", id, result.Error)
 	}
-	return nil
-}
-
-func (a *AssetDaoImpl) UpdateContent(
-	ctx context.Context,
-	id uint,
-	content json.RawMessage,
-) error {
-	query := a.DB.WithContext(ctx).
-		Model(&Asset{}).
-		Where("id = ?", id).
-		Update("content", datatypes.JSON(content))
-	if query.Error != nil {
-		return fmt.Errorf("dao: update content for asset %d: %w", id, query.Error)
-	}
-	if query.RowsAffected == 0 {
+	if result.RowsAffected == 0 {
 		return fmt.Errorf("dao: asset %d not found", id)
 	}
 	return nil

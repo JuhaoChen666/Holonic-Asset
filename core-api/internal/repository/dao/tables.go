@@ -14,7 +14,8 @@ func InitTables(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&Project{},
 		&Asset{},
-		&AssetVersion{},
+		&AssetContent{},
+		&AssetRecord{},
 		&Task{},
 		&Outbox{},
 	)

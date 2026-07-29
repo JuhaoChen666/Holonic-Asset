@@ -18,12 +18,11 @@ type AssetService interface {
 		assetID uint,
 		animationID uint,
 		direction string,
-		status domain.ContentStatus,
 		frames []domain.Frame,
 	) error
 	UpdatePrototypeImages(ctx context.Context, assetID uint, images map[string]domain.ImageResource) error
 
-	// Creates a Character asset and initializes pending prototype content.
+	// Creates a Character asset and initializes prototype content.
 	CreateCharacterAsset(ctx context.Context, asset *domain.Asset) (*domain.Asset, error)
 	CreateObjectAsset(ctx context.Context, asset *domain.Asset) (uint, error)
 	CreateTileSetAsset(ctx context.Context, asset *domain.Asset) (uint, error)
@@ -80,7 +79,6 @@ func (a *AssetServiceImpl) UpdateAnimationDirection(
 	assetID uint,
 	animationID uint,
 	direction string,
-	status domain.ContentStatus,
 	frames []domain.Frame,
 ) error {
 	return a.AssetRepository.UpdateAnimationDirection(
@@ -88,7 +86,6 @@ func (a *AssetServiceImpl) UpdateAnimationDirection(
 		assetID,
 		animationID,
 		direction,
-		status,
 		frames,
 	)
 }

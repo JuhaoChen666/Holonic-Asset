@@ -2,12 +2,12 @@ package repository
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
 
 	"gorm.io/datatypes"
+	"gorm.io/gorm"
 
 	domain "github.com/1024XEngineer/Holonic-Asset/internal/model/asset"
 	"github.com/1024XEngineer/Holonic-Asset/internal/repository/dao"
@@ -23,7 +23,6 @@ type AssetRepository interface {
 		assetID uint,
 		animationID uint,
 		direction string,
-		status domain.ContentStatus,
 		frames []domain.Frame,
 	) error
 
@@ -35,18 +34,104 @@ type AssetRepository interface {
 	CreateAnimation(ctx context.Context, assetID uint, name string) (uint, error)
 	UpdatePrototypeImages(ctx context.Context, assetID uint, images map[string]domain.ImageResource) error
 
-	CreateRecord(ctx context.Context, version *domain.AssetVersion) (*domain.AssetVersion, error)
-	RollBackRecord(ctx context.Context, assetID uint, version uint) (uint, error)
+	CreateRecord(ctx context.Context, record *domain.AssetRecord) (*domain.AssetRecord, error)
+	GetRecordHistory(ctx context.Context, assetID uint) ([]domain.AssetRecord, error)
+	RollBackRecord(ctx context.Context, assetID uint, version uint) (*domain.AssetRecord, error)
 	Copy(ctx context.Context, assetID uint, version uint) (uint, error)
 }
 
 type AssetRepositoryImpl struct {
+	DB         *gorm.DB
 	AssetDao   dao.AssetDao
-	VersionDao dao.AssetVersionDao
+	ContentDao dao.AssetContentDao
+	RecordDao  dao.AssetRecordDao
 }
 
-func NewAssetRepository(assetDao dao.AssetDao) AssetRepository {
-	return &AssetRepositoryImpl{AssetDao: assetDao}
+type assetDaoWithDB interface {
+	WithDB(db *gorm.DB) dao.AssetDao
+}
+
+type assetContentDaoWithDB interface {
+	WithDB(db *gorm.DB) dao.AssetContentDao
+}
+
+type assetRecordDaoWithDB interface {
+	WithDB(db *gorm.DB) dao.AssetRecordDao
+}
+
+type assetDBProvider interface {
+	DBHandle() *gorm.DB
+}
+
+func NewAssetRepository(
+	assetDao dao.AssetDao,
+	contentDao dao.AssetContentDao,
+	recordDao dao.AssetRecordDao,
+) AssetRepository {
+	return &AssetRepositoryImpl{
+		AssetDao:   assetDao,
+		ContentDao: contentDao,
+		RecordDao:  recordDao,
+	}
+}
+
+func NewAssetRepositoryWithDB(
+	db *gorm.DB,
+	assetDao dao.AssetDao,
+	contentDao dao.AssetContentDao,
+	recordDao dao.AssetRecordDao,
+) AssetRepository {
+	return &AssetRepositoryImpl{
+		DB:         db,
+		AssetDao:   assetDao,
+		ContentDao: contentDao,
+		RecordDao:  recordDao,
+	}
+}
+
+func (r *AssetRepositoryImpl) transactionDB() *gorm.DB {
+	if r.DB != nil {
+		return r.DB
+	}
+	if provider, ok := r.AssetDao.(assetDBProvider); ok {
+		return provider.DBHandle()
+	}
+	return nil
+}
+
+func (r *AssetRepositoryImpl) withDB(db *gorm.DB) (*AssetRepositoryImpl, error) {
+	assetDao, ok := r.AssetDao.(assetDaoWithDB)
+	if !ok {
+		return nil, fmt.Errorf("repository: asset DAO does not support transactions")
+	}
+	contentDao, ok := r.ContentDao.(assetContentDaoWithDB)
+	if !ok {
+		return nil, fmt.Errorf("repository: asset content DAO does not support transactions")
+	}
+	recordDao, ok := r.RecordDao.(assetRecordDaoWithDB)
+	if !ok {
+		return nil, fmt.Errorf("repository: asset record DAO does not support transactions")
+	}
+	return &AssetRepositoryImpl{
+		DB:         db,
+		AssetDao:   assetDao.WithDB(db),
+		ContentDao: contentDao.WithDB(db),
+		RecordDao:  recordDao.WithDB(db),
+	}, nil
+}
+
+func (r *AssetRepositoryImpl) inTransaction(ctx context.Context, fn func(*AssetRepositoryImpl) error) error {
+	db := r.transactionDB()
+	if db == nil {
+		return fn(r)
+	}
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		transactionRepository, err := r.withDB(tx)
+		if err != nil {
+			return err
+		}
+		return fn(transactionRepository)
+	})
 }
 
 func (r *AssetRepositoryImpl) GetAssetsByProjectID(ctx context.Context, projectID uint, filter domain.AssetListFilter) ([]domain.Asset, error) {
@@ -67,7 +152,7 @@ func (r *AssetRepositoryImpl) GetAssetsByProjectID(ctx context.Context, projectI
 }
 
 func matchesAssetFilter(asset domain.Asset, filter domain.AssetListFilter) bool {
-	query := strings.TrimSpace(strings.ToLower(filter.Query))
+	query := strings.TrimSpace(filter.Query)
 	if query != "" && !strings.Contains(strings.ToLower(asset.Name), query) && !strings.Contains(strings.ToLower(asset.Description), query) {
 		return false
 	}
@@ -91,10 +176,15 @@ func containsTag(tags []string, target string) bool {
 }
 
 func (r *AssetRepositoryImpl) GetAssetDetail(ctx context.Context, id uint) (*domain.Asset, error) {
-	asset, err := r.AssetDao.GetAssetDetail(ctx, id)
+	asset, err := r.AssetDao.GetAsset(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	content, err := r.resolveAssetContent(ctx, asset)
+	if err != nil {
+		return nil, err
+	}
+	asset.Content = content
 	result := convertAssetToDomain(asset)
 	return &result, nil
 }
@@ -112,7 +202,6 @@ func (r *AssetRepositoryImpl) UpdateAsset(
 		Name:        update.Name,
 		ProjectID:   update.ProjectID,
 		Description: update.Description,
-		Version:     update.Version,
 	}
 	if update.Type != nil {
 		assetType := string(*update.Type)
@@ -147,6 +236,17 @@ func convertAssetToDomain(asset dao.Asset) domain.Asset {
 	}
 }
 
+func (r *AssetRepositoryImpl) resolveAssetContent(ctx context.Context, asset dao.Asset) ([]byte, error) {
+	if r.ContentDao != nil && asset.ContentID != nil {
+		content, err := r.ContentDao.GetAssetContent(ctx, *asset.ContentID)
+		if err != nil {
+			return nil, err
+		}
+		return append([]byte(nil), content.Content...), nil
+	}
+	return append([]byte(nil), asset.Content...), nil
+}
+
 func convertAssetToDAO(asset *domain.Asset, assetType domain.AssetType) (*dao.Asset, error) {
 	if asset == nil {
 		asset = &domain.Asset{}
@@ -156,7 +256,7 @@ func convertAssetToDAO(asset *domain.Asset, assetType domain.AssetType) (*dao.As
 		return nil, fmt.Errorf("repository: decode asset content: %w", err)
 	}
 	if (assetType == domain.AssetTypeCharacter || assetType == domain.AssetTypeObject) && content.Prototype == nil {
-		content.Prototype = &domain.Prototype{Status: domain.ContentStatusPending}
+		content.Prototype = &domain.Prototype{}
 	}
 	encoded, err := domain.EncodeContent(content)
 	if err != nil {
@@ -185,7 +285,63 @@ func (r *AssetRepositoryImpl) UpdateContent(
 	if err != nil {
 		return fmt.Errorf("repository: encode asset %d content: %w", assetID, err)
 	}
-	return r.AssetDao.UpdateContent(ctx, assetID, encoded)
+	return r.inTransaction(ctx, func(transactionRepository *AssetRepositoryImpl) error {
+		return transactionRepository.updateContent(ctx, assetID, encoded)
+	})
+}
+
+func (r *AssetRepositoryImpl) updateContent(ctx context.Context, assetID uint, encoded []byte) error {
+	asset, err := r.AssetDao.GetAssetForUpdate(ctx, assetID)
+	if err != nil {
+		return err
+	}
+	return r.replaceAssetContent(ctx, asset, encoded)
+}
+
+func (r *AssetRepositoryImpl) replaceAssetContent(ctx context.Context, asset dao.Asset, encoded []byte) error {
+	if r.ContentDao == nil || r.RecordDao == nil {
+		return fmt.Errorf("repository: content storage is not configured")
+	}
+	contentRecord, err := r.ContentDao.CreateAssetContent(ctx, &dao.AssetContent{
+		AssetID: asset.ID,
+		Content: datatypes.JSON(encoded),
+	})
+	if err != nil {
+		return err
+	}
+	return r.AssetDao.UpdateAssetCurrentContent(ctx, asset.ID, asset.Version, contentRecord.ID)
+}
+
+func (r *AssetRepositoryImpl) mutateAssetContent(
+	ctx context.Context,
+	assetID uint,
+	mutate func(*domain.AssetContent) error,
+) error {
+	return r.inTransaction(ctx, func(transactionRepository *AssetRepositoryImpl) error {
+		asset, err := transactionRepository.AssetDao.GetAssetForUpdate(ctx, assetID)
+		if err != nil {
+			return err
+		}
+		encoded, err := transactionRepository.resolveAssetContent(ctx, asset)
+		if err != nil {
+			return err
+		}
+		content, err := (domain.Asset{
+			Type:    domain.AssetType(asset.Type),
+			Content: encoded,
+		}).DecodeContent()
+		if err != nil {
+			return fmt.Errorf("repository: decode asset %d content: %w", assetID, err)
+		}
+		if err := mutate(&content); err != nil {
+			return err
+		}
+		updated, err := domain.EncodeContent(content)
+		if err != nil {
+			return fmt.Errorf("repository: encode asset %d content: %w", assetID, err)
+		}
+		return transactionRepository.replaceAssetContent(ctx, asset, updated)
+	})
 }
 
 func (r *AssetRepositoryImpl) UpdateAnimationDirection(
@@ -193,36 +349,27 @@ func (r *AssetRepositoryImpl) UpdateAnimationDirection(
 	assetID uint,
 	animationID uint,
 	direction string,
-	status domain.ContentStatus,
 	frames []domain.Frame,
 ) error {
 	if direction == "" {
 		return fmt.Errorf("repository: animation direction is empty")
 	}
-	asset, err := r.GetAssetDetail(ctx, assetID)
-	if err != nil {
-		return err
-	}
-	content, err := asset.DecodeContent()
-	if err != nil {
-		return fmt.Errorf("repository: decode asset %d content: %w", assetID, err)
-	}
-	for index := range content.Animations {
-		animation := &content.Animations[index]
-		if animation.ID != animationID {
-			continue
+	return r.mutateAssetContent(ctx, assetID, func(content *domain.AssetContent) error {
+		for index := range content.Animations {
+			animation := &content.Animations[index]
+			if animation.ID != animationID {
+				continue
+			}
+			if animation.Directions == nil {
+				animation.Directions = make(map[string]domain.AnimationDirection)
+			}
+			current := animation.Directions[direction]
+			current.Frames = append([]domain.Frame(nil), frames...)
+			animation.Directions[direction] = current
+			return nil
 		}
-		if animation.Directions == nil {
-			animation.Directions = make(map[string]domain.AnimationDirection)
-		}
-		current := animation.Directions[direction]
-		current.Status = status
-		current.Frames = append([]domain.Frame(nil), frames...)
-		animation.Directions[direction] = current
-		animation.Status = aggregateAnimationStatus(animation.Directions)
-		return r.UpdateContent(ctx, assetID, content)
-	}
-	return fmt.Errorf("repository: animation %d not found in asset %d", animationID, assetID)
+		return fmt.Errorf("repository: animation %d not found in asset %d", animationID, assetID)
+	})
 }
 
 func (r *AssetRepositoryImpl) createAsset(ctx context.Context, asset *domain.Asset, assetType domain.AssetType) (uint, error) {
@@ -238,10 +385,49 @@ func (r *AssetRepositoryImpl) createAssetResult(ctx context.Context, asset *doma
 	if err != nil {
 		return nil, err
 	}
+	if r.ContentDao == nil || r.RecordDao == nil {
+		return nil, fmt.Errorf("repository: content storage is not configured")
+	}
+	var result *domain.Asset
+	if err := r.inTransaction(ctx, func(transactionRepository *AssetRepositoryImpl) error {
+		var err error
+		result, err = transactionRepository.createAssetResultInTransaction(ctx, value)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (r *AssetRepositoryImpl) createAssetResultInTransaction(ctx context.Context, value *dao.Asset) (*domain.Asset, error) {
 	created, err := r.AssetDao.CreateAsset(ctx, value)
 	if err != nil {
 		return nil, err
 	}
+	currentVersion := created.Version
+	if currentVersion == 0 {
+		currentVersion = 1
+		created.Version = currentVersion
+	}
+	contentRecord, err := r.ContentDao.CreateAssetContent(ctx, &dao.AssetContent{
+		AssetID: created.ID,
+		Content: datatypes.JSON(value.Content),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := r.RecordDao.CreateAssetRecord(ctx, &dao.AssetRecord{
+		AssetID:   created.ID,
+		Version:   currentVersion,
+		ContentID: contentRecord.ID,
+	}); err != nil {
+		return nil, err
+	}
+	if err := r.AssetDao.UpdateAssetCurrentContent(ctx, created.ID, currentVersion, contentRecord.ID); err != nil {
+		return nil, err
+	}
+	created.ContentID = &contentRecord.ID
+	created.Content = append([]byte(nil), value.Content...)
 	result := convertAssetToDomain(created)
 	return &result, nil
 }
@@ -270,22 +456,16 @@ func (r *AssetRepositoryImpl) CreateAnimation(ctx context.Context, assetID uint,
 	if name == "" {
 		return 0, fmt.Errorf("repository: animation name is empty")
 	}
-	asset, err := r.GetAssetDetail(ctx, assetID)
-	if err != nil {
-		return 0, err
-	}
-	content, err := asset.DecodeContent()
-	if err != nil {
-		return 0, err
-	}
-	animationID := nextAnimationID(content.Animations)
-	content.Animations = append(content.Animations, domain.Animation{
-		ID:         animationID,
-		Name:       name,
-		Status:     domain.ContentStatusPending,
-		Directions: make(map[string]domain.AnimationDirection),
-	})
-	if err := r.UpdateContent(ctx, asset.ID, content); err != nil {
+	var animationID uint
+	if err := r.mutateAssetContent(ctx, assetID, func(content *domain.AssetContent) error {
+		animationID = nextAnimationID(content.Animations)
+		content.Animations = append(content.Animations, domain.Animation{
+			ID:         animationID,
+			Name:       name,
+			Directions: make(map[string]domain.AnimationDirection),
+		})
+		return nil
+	}); err != nil {
 		return 0, err
 	}
 	return animationID, nil
@@ -296,129 +476,288 @@ func (r *AssetRepositoryImpl) UpdatePrototypeImages(
 	assetID uint,
 	images map[string]domain.ImageResource,
 ) error {
-	asset, err := r.GetAssetDetail(ctx, assetID)
-	if err != nil {
-		return err
-	}
-	content, err := asset.DecodeContent()
-	if err != nil {
-		return err
-	}
-	if content.Prototype == nil {
-		content.Prototype = &domain.Prototype{Status: domain.ContentStatusPending}
-	}
-	if content.Prototype.Directions == nil {
-		content.Prototype.Directions = make(map[string]domain.PrototypeDirection)
-	}
-	for _, direction := range content.ViewElements {
-		if _, ok := content.Prototype.Directions[direction]; !ok {
-			content.Prototype.Directions[direction] = domain.PrototypeDirection{Status: domain.ContentStatusPending}
+	return r.mutateAssetContent(ctx, assetID, func(content *domain.AssetContent) error {
+		if content.Prototype == nil {
+			content.Prototype = &domain.Prototype{}
 		}
-	}
-	for direction, image := range images {
-		if direction == "" {
-			return fmt.Errorf("repository: prototype direction is empty")
+		if content.Prototype.Directions == nil {
+			content.Prototype.Directions = make(map[string]domain.PrototypeDirection)
 		}
-		if len(content.ViewElements) > 0 && !containsViewElement(content.ViewElements, direction) {
-			return fmt.Errorf("repository: prototype direction %q is not supported by asset %d", direction, assetID)
+		directions := domain.DirectionsForCount(content.DirectionCount)
+		for _, direction := range directions {
+			if _, ok := content.Prototype.Directions[direction]; !ok {
+				content.Prototype.Directions[direction] = domain.PrototypeDirection{}
+			}
 		}
-		current := content.Prototype.Directions[direction]
-		current.Status = image.Status
-		current.Image = &image
-		content.Prototype.Directions[direction] = current
-	}
-	content.Prototype.Status = aggregatePrototypeStatus(content.ViewElements, content.Prototype.Directions)
-	return r.UpdateContent(ctx, asset.ID, content)
+		for direction, image := range images {
+			if direction == "" {
+				return fmt.Errorf("repository: prototype direction is empty")
+			}
+			if len(directions) > 0 && !slices.Contains(directions, direction) {
+				return fmt.Errorf("repository: prototype direction %q is not supported by asset %d", direction, assetID)
+			}
+			current := content.Prototype.Directions[direction]
+			current.Image = &image
+			content.Prototype.Directions[direction] = current
+		}
+		return nil
+	})
 }
 
-func (r *AssetRepositoryImpl) CreateRecord(ctx context.Context, version *domain.AssetVersion) (*domain.AssetVersion, error) {
-	if version == nil {
-		return nil, fmt.Errorf("repository: asset version is nil")
+func (r *AssetRepositoryImpl) CreateRecord(ctx context.Context, record *domain.AssetRecord) (*domain.AssetRecord, error) {
+	if record == nil {
+		return nil, fmt.Errorf("repository: asset record is nil")
 	}
-	asset, err := r.GetAssetDetail(ctx, version.AssetID)
-	if err != nil {
-		return nil, err
-	}
-	if version.Version == 0 {
-		version.Version = asset.Version + 1
-	}
-	snapshot := &domain.AssetVersion{
-		AssetID: version.AssetID,
-		Version: version.Version,
-		Content: append([]byte(nil), asset.Content...),
-	}
-	if r.VersionDao != nil {
-		id, err := r.VersionDao.CreateAssetVersion(ctx, &dao.AssetVersion{
-			AssetID: snapshot.AssetID,
-			Version: snapshot.Version,
-			Content: datatypes.JSON(snapshot.Content),
-		})
-		if err != nil {
-			return nil, err
-		}
-		snapshot.ID = id
-	}
-	if err := r.AssetDao.UpdateAssetVersion(ctx, asset.ID, snapshot.Version); err != nil {
+	recordCopy := *record
+	var snapshot *domain.AssetRecord
+	if err := r.inTransaction(ctx, func(transactionRepository *AssetRepositoryImpl) error {
+		var err error
+		snapshot, err = transactionRepository.createRecord(ctx, &recordCopy)
+		return err
+	}); err != nil {
 		return nil, err
 	}
 	return snapshot, nil
 }
 
-func (r *AssetRepositoryImpl) RollBackRecord(ctx context.Context, assetID uint, version uint) (uint, error) {
-	if r.VersionDao == nil {
-		return 0, fmt.Errorf("repository: version storage is not configured")
-	}
-	versions, err := r.VersionDao.GetAssetVersionsByAssetID(ctx, assetID)
+func (r *AssetRepositoryImpl) createRecord(ctx context.Context, record *domain.AssetRecord) (*domain.AssetRecord, error) {
+	asset, err := r.AssetDao.GetAssetForUpdate(ctx, record.AssetID)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	for _, candidate := range versions {
-		if candidate.Version != version {
-			continue
+	content, err := r.resolveAssetContent(ctx, asset)
+	if err != nil {
+		return nil, err
+	}
+	if r.ContentDao == nil || r.RecordDao == nil {
+		return nil, fmt.Errorf("repository: content storage is not configured")
+	}
+	history, err := r.RecordDao.GetAssetRecordsByAssetID(ctx, asset.ID)
+	if err != nil {
+		return nil, err
+	}
+	version := record.Version
+	if version == 0 {
+		version = asset.Version + 1
+		for _, candidate := range history {
+			if candidate.Version >= version {
+				version = candidate.Version + 1
+			}
 		}
-		content, err := decodeDAOContent(candidate.Content)
+	}
+	snapshot := &domain.AssetRecord{
+		AssetID: record.AssetID,
+		Version: version,
+		Content: append([]byte(nil), content...),
+	}
+	contentRecord, err := r.ContentDao.CreateAssetContent(ctx, &dao.AssetContent{
+		AssetID: asset.ID,
+		Content: datatypes.JSON(snapshot.Content),
+	})
+	if err != nil {
+		return nil, err
+	}
+	daoRecord := &dao.AssetRecord{
+		AssetID:   snapshot.AssetID,
+		Version:   snapshot.Version,
+		ContentID: contentRecord.ID,
+	}
+	recordID, err := r.RecordDao.CreateAssetRecord(ctx, daoRecord)
+	if err != nil {
+		return nil, err
+	}
+	snapshot.ID = recordID
+	snapshot.ContentID = contentRecord.ID
+	snapshot.CreatedAt = daoRecord.CreatedAt
+	if err := r.AssetDao.UpdateAssetCurrentContent(ctx, asset.ID, snapshot.Version, contentRecord.ID); err != nil {
+		return nil, err
+	}
+	return snapshot, nil
+}
+
+func (r *AssetRepositoryImpl) GetRecordHistory(ctx context.Context, assetID uint) ([]domain.AssetRecord, error) {
+	if r.RecordDao == nil {
+		return nil, fmt.Errorf("repository: record storage is not configured")
+	}
+	records, err := r.RecordDao.GetAssetRecordsByAssetID(ctx, assetID)
+	if err != nil {
+		return nil, err
+	}
+	if r.ContentDao == nil {
+		return nil, fmt.Errorf("repository: content storage is not configured")
+	}
+	result := make([]domain.AssetRecord, 0, len(records))
+	for _, record := range records {
+		content, err := r.ContentDao.GetAssetContent(ctx, record.ContentID)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
-		if err := r.UpdateContent(ctx, assetID, content); err != nil {
-			return 0, err
-		}
-		if err := r.AssetDao.UpdateAssetVersion(ctx, assetID, version); err != nil {
-			return 0, err
-		}
-		return version, nil
-	}
-	return 0, fmt.Errorf("repository: asset %d version %d not found", assetID, version)
-}
-
-func (r *AssetRepositoryImpl) Copy(ctx context.Context, assetID uint, version uint) (uint, error) {
-	original, err := r.GetAssetDetail(ctx, assetID)
-	if err != nil {
-		return 0, err
-	}
-	copyAsset := *original
-	copyAsset.ID = 0
-	if version > 0 {
-		copyAsset.Version = version
-	}
-	created, err := convertAssetToDAO(&copyAsset, original.Type)
-	if err != nil {
-		return 0, err
-	}
-	created.ID = 0
-	newAsset, err := r.AssetDao.CreateAsset(ctx, created)
-	if err != nil {
-		return 0, err
-	}
-	return newAsset.ID, nil
-}
-
-func decodeDAOContent(content []byte) (domain.AssetContent, error) {
-	var result domain.AssetContent
-	if err := json.Unmarshal(content, &result); err != nil {
-		return domain.AssetContent{}, err
+		result = append(result, domain.AssetRecord{
+			ID:        record.ID,
+			AssetID:   record.AssetID,
+			Version:   record.Version,
+			ContentID: record.ContentID,
+			CreatedAt: record.CreatedAt,
+			Content:   append([]byte(nil), content.Content...),
+		})
 	}
 	return result, nil
+}
+
+func (r *AssetRepositoryImpl) RollBackRecord(ctx context.Context, assetID uint, version uint) (*domain.AssetRecord, error) {
+	if r.RecordDao == nil {
+		return nil, fmt.Errorf("repository: record storage is not configured")
+	}
+	if r.ContentDao == nil {
+		return nil, fmt.Errorf("repository: content storage is not configured")
+	}
+	var result *domain.AssetRecord
+	if err := r.inTransaction(ctx, func(transactionRepository *AssetRepositoryImpl) error {
+		var err error
+		result, err = transactionRepository.rollbackRecord(ctx, assetID, version)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (r *AssetRepositoryImpl) rollbackRecord(ctx context.Context, assetID uint, version uint) (*domain.AssetRecord, error) {
+	asset, err := r.AssetDao.GetAssetForUpdate(ctx, assetID)
+	if err != nil {
+		return nil, err
+	}
+	candidate, err := r.RecordDao.GetAssetRecord(ctx, assetID, version)
+	if err != nil {
+		return nil, err
+	}
+	content, err := r.ContentDao.GetAssetContent(ctx, candidate.ContentID)
+	if err != nil {
+		return nil, err
+	}
+	history, err := r.RecordDao.GetAssetRecordsByAssetID(ctx, assetID)
+	if err != nil {
+		return nil, err
+	}
+	retainedContentIDs := make(map[uint]struct{}, len(history))
+	contentIDsToDelete := make([]uint, 0)
+	for _, record := range history {
+		if record.Version <= version {
+			retainedContentIDs[record.ContentID] = struct{}{}
+			continue
+		}
+		contentIDsToDelete = appendUniqueUint(contentIDsToDelete, record.ContentID)
+	}
+	if asset.ContentID != nil {
+		if _, retained := retainedContentIDs[*asset.ContentID]; !retained && *asset.ContentID != candidate.ContentID {
+			contentIDsToDelete = appendUniqueUint(contentIDsToDelete, *asset.ContentID)
+		}
+	}
+	if err := r.AssetDao.UpdateAssetCurrentContent(ctx, assetID, version, candidate.ContentID); err != nil {
+		return nil, err
+	}
+	if err := r.RecordDao.DeleteAssetRecordsAfterVersion(ctx, assetID, version); err != nil {
+		return nil, err
+	}
+	if err := r.ContentDao.DeleteAssetContents(ctx, contentIDsToDelete); err != nil {
+		return nil, err
+	}
+	return &domain.AssetRecord{
+		ID:        candidate.ID,
+		AssetID:   candidate.AssetID,
+		Version:   candidate.Version,
+		ContentID: candidate.ContentID,
+		CreatedAt: candidate.CreatedAt,
+		Content:   append([]byte(nil), content.Content...),
+	}, nil
+}
+
+func (r *AssetRepositoryImpl) Copy(ctx context.Context, assetID uint, _ uint) (uint, error) {
+	if r.ContentDao == nil || r.RecordDao == nil {
+		return 0, fmt.Errorf("repository: content storage is not configured")
+	}
+	var newAssetID uint
+	if err := r.inTransaction(ctx, func(transactionRepository *AssetRepositoryImpl) error {
+		var err error
+		newAssetID, err = transactionRepository.copyAssetInTransaction(ctx, assetID)
+		return err
+	}); err != nil {
+		return 0, err
+	}
+	return newAssetID, nil
+}
+
+func (r *AssetRepositoryImpl) copyAssetInTransaction(ctx context.Context, assetID uint) (uint, error) {
+	asset, err := r.AssetDao.GetAssetForUpdate(ctx, assetID)
+	if err != nil {
+		return 0, err
+	}
+	records, err := r.RecordDao.GetAssetRecordsByAssetID(ctx, assetID)
+	if err != nil {
+		return 0, err
+	}
+	contents, err := r.ContentDao.GetAssetContentsByAssetID(ctx, assetID)
+	if err != nil {
+		return 0, err
+	}
+
+	copyAsset := &dao.Asset{
+		Name:        asset.Name,
+		ProjectID:   asset.ProjectID,
+		Type:        asset.Type,
+		Description: asset.Description,
+		Tags:        append([]string(nil), asset.Tags...),
+		Attributes:  append([]byte(nil), asset.Attributes...),
+		Version:     asset.Version,
+	}
+	created, err := r.AssetDao.CreateAsset(ctx, copyAsset)
+	if err != nil {
+		return 0, err
+	}
+
+	contentCopies := make([]dao.AssetContent, len(contents))
+	for index, content := range contents {
+		contentCopies[index] = dao.AssetContent{
+			AssetID: created.ID,
+			Content: append(datatypes.JSON(nil), content.Content...),
+		}
+	}
+	if err := r.ContentDao.CreateAssetContents(ctx, contentCopies); err != nil {
+		return 0, err
+	}
+
+	contentIDs := make(map[uint]uint, len(contents))
+	for index, content := range contents {
+		contentIDs[content.ID] = contentCopies[index].ID
+	}
+
+	recordCopies := make([]dao.AssetRecord, 0, len(records))
+	for _, record := range records {
+		contentID, ok := contentIDs[record.ContentID]
+		if !ok {
+			return 0, fmt.Errorf("repository: content %d for asset record %d/%d not found", record.ContentID, record.AssetID, record.Version)
+		}
+		recordCopies = append(recordCopies, dao.AssetRecord{
+			AssetID:   created.ID,
+			Version:   record.Version,
+			ContentID: contentID,
+			CreatedAt: record.CreatedAt,
+		})
+	}
+	if err := r.RecordDao.CreateAssetRecords(ctx, recordCopies); err != nil {
+		return 0, err
+	}
+
+	if asset.ContentID != nil {
+		contentID, ok := contentIDs[*asset.ContentID]
+		if !ok {
+			return 0, fmt.Errorf("repository: current content %d for asset %d not found", *asset.ContentID, assetID)
+		}
+		if err := r.AssetDao.UpdateAssetCurrentContent(ctx, created.ID, asset.Version, contentID); err != nil {
+			return 0, err
+		}
+	}
+	return created.ID, nil
 }
 
 func nextAnimationID(animations []domain.Animation) uint {
@@ -431,74 +770,9 @@ func nextAnimationID(animations []domain.Animation) uint {
 	return id + 1
 }
 
-func containsViewElement(viewElements []string, direction string) bool {
-	return slices.Contains(viewElements, direction)
-}
-
-func aggregatePrototypeStatus(
-	viewElements []string,
-	directions map[string]domain.PrototypeDirection,
-) domain.ContentStatus {
-	if len(directions) == 0 {
-		return domain.ContentStatusPending
+func appendUniqueUint(values []uint, value uint) []uint {
+	if slices.Contains(values, value) {
+		return values
 	}
-	targets := viewElements
-	if len(targets) == 0 {
-		targets = make([]string, 0, len(directions))
-		for direction := range directions {
-			targets = append(targets, direction)
-		}
-	}
-	completed := 0
-	failed := 0
-	for _, direction := range targets {
-		value, ok := directions[direction]
-		if !ok {
-			continue
-		}
-		switch value.Status {
-		case domain.ContentStatusCompleted:
-			if value.Image != nil {
-				completed++
-			}
-		case domain.ContentStatusFailed:
-			failed++
-		}
-	}
-	if completed == len(targets) {
-		return domain.ContentStatusCompleted
-	}
-	if failed > 0 && completed > 0 {
-		return domain.ContentStatusPartial
-	}
-	if failed == len(targets) {
-		return domain.ContentStatusFailed
-	}
-	return domain.ContentStatusProcessing
-}
-
-func aggregateAnimationStatus(directions map[string]domain.AnimationDirection) domain.ContentStatus {
-	if len(directions) == 0 {
-		return domain.ContentStatusPending
-	}
-	completed := 0
-	failed := 0
-	for _, direction := range directions {
-		switch direction.Status {
-		case domain.ContentStatusFailed:
-			failed++
-		case domain.ContentStatusCompleted:
-			completed++
-		}
-	}
-	if completed == len(directions) {
-		return domain.ContentStatusCompleted
-	}
-	if failed > 0 && completed > 0 {
-		return domain.ContentStatusPartial
-	}
-	if failed == len(directions) {
-		return domain.ContentStatusFailed
-	}
-	return domain.ContentStatusProcessing
+	return append(values, value)
 }

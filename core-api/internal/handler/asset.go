@@ -13,13 +13,13 @@ import (
 
 type Handler struct {
 	AssetService       service.AssetService
-	AssetVerionService service.AssetVersionService
+	AssetRecordService service.AssetRecordService
 }
 
-func NewHandler(as service.AssetService, vs service.AssetVersionService) *Handler {
+func NewHandler(as service.AssetService, rs service.AssetRecordService) *Handler {
 	return &Handler{
 		AssetService:       as,
-		AssetVerionService: vs,
+		AssetRecordService: rs,
 	}
 }
 
@@ -87,15 +87,50 @@ func parseAssetPathID(x *echox.Context, name string) (uint, error) {
 }
 
 func (h *Handler) Record(x *echox.Context, asset dto.RecordAssetRequest) (dto.Response, error) {
-	_, err := h.AssetVerionService.CreateRecord(x, &domain.AssetVersion{AssetID: asset.AssetID})
+	if asset.AssetID == 0 {
+		return dto.Response{}, echo.ErrBadRequest
+	}
+	record, err := h.AssetRecordService.CreateRecord(x, &domain.AssetRecord{AssetID: asset.AssetID})
 	if err != nil {
 		return dto.Response{}, err
 	}
-	return dto.NewSuccessResponse([]dto.RecordAssetResponse{}), nil
+	return dto.NewSuccessResponse(dto.RecordAssetResponse{
+		RecordID:  record.ID,
+		AssetID:   record.AssetID,
+		Version:   record.Version,
+		ContentID: record.ContentID,
+		CreatedAt: record.CreatedAt,
+	}), nil
+}
+
+func (h *Handler) Records(x *echox.Context) (dto.Response, error) {
+	assetID, err := parseAssetPathID(x, "asset_id")
+	if err != nil {
+		return dto.Response{}, err
+	}
+	records, err := h.AssetRecordService.GetRecordHistory(x, assetID)
+	if err != nil {
+		return dto.Response{}, err
+	}
+	items := make([]dto.AssetRecordResponse, len(records))
+	for index, record := range records {
+		items[index] = dto.AssetRecordResponse{
+			RecordID:  record.ID,
+			AssetID:   record.AssetID,
+			Version:   record.Version,
+			ContentID: record.ContentID,
+			CreatedAt: record.CreatedAt,
+			Content:   record.Content,
+		}
+	}
+	return dto.NewSuccessResponse(dto.GetAssetRecordsResponse{Records: items}), nil
 }
 
 func (h *Handler) CopyAsset(ctx *echox.Context, asset dto.CopyAssetRequest) (dto.Response, error) {
-	newAssetID, err := h.AssetVerionService.Copy(ctx, asset.AssetID, 0)
+	if asset.AssetID == 0 {
+		return dto.Response{}, echo.ErrBadRequest
+	}
+	newAssetID, err := h.AssetRecordService.Copy(ctx, asset.AssetID, 0)
 	if err != nil {
 		return dto.Response{}, err
 	}
@@ -103,14 +138,21 @@ func (h *Handler) CopyAsset(ctx *echox.Context, asset dto.CopyAssetRequest) (dto
 }
 
 func (h *Handler) RollBackAsset(ctx *echox.Context, asset dto.RollBackAssetRequest) (dto.Response, error) {
-	_, err := h.AssetVerionService.RollBackVersion(ctx, asset.AssetID, 0)
+	if asset.AssetID == 0 || asset.Version == 0 {
+		return dto.Response{}, echo.ErrBadRequest
+	}
+	record, err := h.AssetRecordService.RollBackRecord(ctx, asset.AssetID, asset.Version)
 	if err != nil {
 		return dto.Response{}, err
 	}
-	return dto.NewSuccessResponse(dto.RollBackAssetResponse{}), nil
+	return dto.NewSuccessResponse(dto.RollBackAssetResponse{
+		AssetID:   record.AssetID,
+		Version:   record.Version,
+		ContentID: record.ContentID,
+	}), nil
 }
 
-func (h *Handler) Tags(ctx *echox.Context, req dto.UpdateAssetRequest) (dto.Response, error) {
+func (h *Handler) UpdateAsset(ctx *echox.Context, req dto.UpdateAssetRequest) (dto.Response, error) {
 	asset, err := h.AssetService.UpdateAsset(ctx, req.AssetID, &domain.AssetUpdate{
 		Name:        req.Name,
 		ProjectID:   req.ProjectID,
@@ -118,7 +160,6 @@ func (h *Handler) Tags(ctx *echox.Context, req dto.UpdateAssetRequest) (dto.Resp
 		Description: req.Description,
 		Tags:        req.Tags,
 		Attributes:  req.Attributes,
-		Version:     req.Version,
 	})
 	if err != nil {
 		return dto.Response{}, err
