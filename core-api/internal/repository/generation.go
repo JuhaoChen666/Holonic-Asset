@@ -9,10 +9,9 @@ import (
 // Reader defines generation queries that do not require a write transaction.
 type Reader interface {
 	GetRun(ctx context.Context, runID domain.RunID) (*domain.GenerationRun, error)
+	ListRuns(ctx context.Context, filter *domain.RunListFilter) (*domain.RunListPage, error)
 	GetStep(ctx context.Context, stepID domain.StepID) (*domain.Step, error)
 	ListSteps(ctx context.Context, runID domain.RunID) ([]domain.Step, error)
-	GetCandidate(ctx context.Context, candidateID domain.CandidateID) (*domain.Candidate, error)
-	ListCandidates(ctx context.Context, runID domain.RunID) ([]domain.Candidate, error)
 }
 
 // Writer persists generation-owned data only. Task state and queue operations
@@ -32,9 +31,6 @@ type Writer interface {
 	CreatePlan(ctx context.Context, plan *domain.Plan) error
 	SetStepTask(ctx context.Context, stepID domain.StepID, taskID uint) error
 	SaveStepResult(ctx context.Context, stepID domain.StepID, result *domain.StepResult) error
-
-	CreateCandidate(ctx context.Context, candidate *domain.Candidate) error
-	ConfirmCandidate(ctx context.Context, runID domain.RunID, candidateID domain.CandidateID) (bool, error)
 }
 
 // Repository is the transaction-bound persistence contract.

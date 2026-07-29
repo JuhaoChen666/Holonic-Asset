@@ -28,9 +28,6 @@ func TestGenerationResponseSeparatesLifecycleFromTaskStatus(t *testing.T) {
 		Steps: []dto.StepResponse{{
 			TaskStatus: &taskStatus,
 		}},
-		Candidates: []dto.CandidateResponse{{
-			ID: 9,
-		}},
 	}
 
 	payload, err := json.Marshal(response)
@@ -56,11 +53,5 @@ func TestGenerationResponseSeparatesLifecycleFromTaskStatus(t *testing.T) {
 	}
 	if _, exists := step["status"]; exists {
 		t.Fatalf("step must label execution state as taskStatus: %s", payload)
-	}
-
-	candidates := body["candidates"].([]any)
-	candidate := candidates[0].(map[string]any)
-	if _, exists := candidate["status"]; exists {
-		t.Fatalf("candidate must not expose task status: %s", payload)
 	}
 }

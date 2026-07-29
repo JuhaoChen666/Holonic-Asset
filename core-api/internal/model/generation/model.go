@@ -9,7 +9,7 @@ import (
 type RunID uint
 type PlanID uint
 type StepID uint
-type CandidateID uint
+type RunListStatus string
 
 // GenerationRequest captures the business intent accepted by generation.
 // Kind-specific parameters remain bounded data interpreted by generation.
@@ -29,21 +29,44 @@ type Failure struct {
 }
 
 type GenerationRun struct {
-	ID                   RunID
-	PlanningTaskID       *uint
-	ProjectID            uint
-	Request              GenerationRequest
-	PlanID               PlanID
-	Lifecycle            RunLifecycle
-	ConfirmedCandidateID *CandidateID
-	Failure              *Failure
+	ID             RunID
+	PlanningTaskID *uint
+	ProjectID      uint
+	Request        GenerationRequest
+	PlanID         PlanID
+	Lifecycle      RunLifecycle
+	Failure        *Failure
 }
 
 // GenerationDetail is assembled from generation records and task state.
 type GenerationDetail struct {
-	Run        GenerationRun
-	Steps      []StepDetail
-	Candidates []Candidate
+	Run   GenerationRun
+	Steps []StepDetail
+}
+
+// RunListQuery contains the client-facing list semantics. The service expands
+// status and asset scope into repository filters.
+type RunListQuery struct {
+	ProjectID uint
+	AssetID   *uint
+	Status    RunListStatus
+	Limit     int
+	Cursor    string
+}
+
+type RunListFilter struct {
+	ProjectID        uint
+	AssetID          *uint
+	Lifecycles       []RunLifecycle
+	IncludeTaskTypes []TaskType
+	ExcludeTaskTypes []TaskType
+	Limit            int
+	Cursor           string
+}
+
+type RunListPage struct {
+	Runs       []GenerationRun
+	NextCursor string
 }
 
 // StepDetail carries task-owned execution state without persisting a duplicate
@@ -74,22 +97,4 @@ type Step struct {
 type StepResult struct {
 	MediaIDs []string
 	Metadata json.RawMessage
-}
-
-type Candidate struct {
-	ID       CandidateID
-	RunID    RunID
-	MediaIDs []string
-}
-
-// ConfirmCandidateCommand contains the asset target required to apply an
-// accepted candidate without making the asset module query generation state.
-type ConfirmCandidateCommand struct {
-	RunID            RunID
-	CandidateID      CandidateID
-	ProjectID        uint
-	AssetID          uint
-	Kind             RequestKind
-	TargetAssetPaths []string
-	MediaIDs         []string
 }

@@ -16,14 +16,17 @@ import (
 	"github.com/1024XEngineer/Holonic-Asset/internal/handler"
 	domain "github.com/1024XEngineer/Holonic-Asset/internal/model/generation"
 	taskdomain "github.com/1024XEngineer/Holonic-Asset/internal/module/task"
+	"github.com/1024XEngineer/Holonic-Asset/internal/service"
 	"github.com/1024XEngineer/Holonic-Asset/pkg/echox"
 )
 
 type requestServiceStub struct {
 	createRequest *domain.GenerationRequest
+	listQuery     *domain.RunListQuery
+	listPage      *domain.RunListPage
+	listErr       error
 	detail        *domain.GenerationDetail
 	cancelErr     error
-	confirmErr    error
 }
 
 func (s *requestServiceStub) Create(
@@ -32,6 +35,17 @@ func (s *requestServiceStub) Create(
 ) (domain.RunID, error) {
 	s.createRequest = request
 	return 17, nil
+}
+
+func (s *requestServiceStub) List(
+	_ context.Context,
+	query *domain.RunListQuery,
+) (*domain.RunListPage, error) {
+	s.listQuery = query
+	if s.listPage == nil {
+		return &domain.RunListPage{}, s.listErr
+	}
+	return s.listPage, s.listErr
 }
 
 func (s *requestServiceStub) Get(
@@ -43,14 +57,6 @@ func (s *requestServiceStub) Get(
 
 func (s *requestServiceStub) Cancel(context.Context, domain.RunID) error {
 	return s.cancelErr
-}
-
-func (s *requestServiceStub) ConfirmCandidate(
-	context.Context,
-	domain.RunID,
-	domain.CandidateID,
-) error {
-	return s.confirmErr
 }
 
 func TestCreateMapsTransportRequest(t *testing.T) {
@@ -89,14 +95,12 @@ func TestCreateMapsTransportRequest(t *testing.T) {
 }
 
 func TestGetMapsGenerationDetail(t *testing.T) {
-	confirmedCandidateID := domain.CandidateID(9)
 	taskStatus := taskdomain.StatusProcessing
 	stub := &requestServiceStub{detail: &domain.GenerationDetail{
 		Run: domain.GenerationRun{
-			ID:                   7,
-			ProjectID:            2,
-			Lifecycle:            domain.RunLifecycleWaitingConfirmation,
-			ConfirmedCandidateID: &confirmedCandidateID,
+			ID:        7,
+			ProjectID: 2,
+			Lifecycle: domain.RunLifecycleGenerating,
 			Request: domain.GenerationRequest{
 				Kind: domain.RequestKindGenerateCharacter,
 			},
@@ -110,10 +114,6 @@ func TestGetMapsGenerationDetail(t *testing.T) {
 			},
 			TaskStatus: &taskStatus,
 		}},
-		Candidates: []domain.Candidate{{
-			ID:       9,
-			MediaIDs: []string{"media-1"},
-		}},
 	}}
 	generationHandler := handler.NewGenerationHandler(stub)
 
@@ -126,7 +126,7 @@ func TestGetMapsGenerationDetail(t *testing.T) {
 	}
 	if response.ID != 7 || response.ProjectID != 2 ||
 		response.Kind != domain.RequestKindGenerateCharacter ||
-		response.Lifecycle != domain.RunLifecycleWaitingConfirmation {
+		response.Lifecycle != domain.RunLifecycleGenerating {
 		t.Fatalf("unexpected run response: %+v", response)
 	}
 	if len(response.Steps) != 1 || response.Steps[0].ID != 8 ||
@@ -134,9 +134,58 @@ func TestGetMapsGenerationDetail(t *testing.T) {
 		*response.Steps[0].TaskStatus != taskdomain.StatusProcessing {
 		t.Fatalf("unexpected steps response: %+v", response.Steps)
 	}
-	if len(response.Candidates) != 1 || response.Candidates[0].ID != 9 ||
-		response.ConfirmedCandidateID == nil || *response.ConfirmedCandidateID != 9 {
-		t.Fatalf("unexpected candidates response: %+v", response.Candidates)
+}
+
+func TestListMapsQueryAndRuns(t *testing.T) {
+	assetID := uint(3)
+	stub := &requestServiceStub{listPage: &domain.RunListPage{
+		Runs: []domain.GenerationRun{{
+			ID:        7,
+			ProjectID: 2,
+			Request: domain.GenerationRequest{
+				AssetID: assetID,
+				Kind:    domain.RequestKindGenerateCharacter,
+			},
+			Lifecycle: domain.RunLifecycleGenerating,
+		}},
+		NextCursor: "next",
+	}}
+	generationHandler := handler.NewGenerationHandler(stub)
+
+	query := dto.ListGenerationRunsRequest{
+		ProjectID: 42,
+		AssetID:   &assetID,
+		Status:    domain.RunListStatusActive,
+		Limit:     10,
+		Cursor:    "cursor",
+	}
+	response, err := generationHandler.List(newGenerationHandlerContext(), query)
+	if err != nil {
+		t.Fatalf("list generation runs: %v", err)
+	}
+	if stub.listQuery == nil || stub.listQuery.ProjectID != query.ProjectID ||
+		stub.listQuery.AssetID == nil || *stub.listQuery.AssetID != assetID ||
+		stub.listQuery.Status != query.Status || stub.listQuery.Limit != query.Limit ||
+		stub.listQuery.Cursor != query.Cursor {
+		t.Fatalf("unexpected list query: %+v", stub.listQuery)
+	}
+	if len(response.Items) != 1 || response.Items[0].ID != 7 ||
+		response.Items[0].AssetID != assetID ||
+		response.Items[0].Kind != domain.RequestKindGenerateCharacter ||
+		response.Items[0].Lifecycle != domain.RunLifecycleGenerating ||
+		response.NextCursor != "next" {
+		t.Fatalf("unexpected list response: %+v", response)
+	}
+}
+
+func TestListRejectsUnsupportedStatus(t *testing.T) {
+	stub := &requestServiceStub{listErr: service.ErrInvalidRunListStatus}
+	_, err := handler.NewGenerationHandler(stub).List(
+		newGenerationHandlerContext(),
+		dto.ListGenerationRunsRequest{Status: "completed"},
+	)
+	if !errors.Is(err, echo.ErrBadRequest) {
+		t.Fatalf("expected bad request, got %v", err)
 	}
 }
 
@@ -165,30 +214,6 @@ func TestCommandResponsesReflectServiceResult(t *testing.T) {
 			invoke: func(h *handler.GenerationHandler) (bool, error) {
 				response, err := h.Cancel(newGenerationHandlerContext(), dto.CancelGenerationRequest{GenerationRunID: 7})
 				return response.Cancelled, err
-			},
-			wantErr: wantErr,
-		},
-		{
-			name: "confirmation success",
-			stub: &requestServiceStub{},
-			invoke: func(h *handler.GenerationHandler) (bool, error) {
-				response, err := h.ConfirmCandidate(newGenerationHandlerContext(), dto.ConfirmCandidateRequest{
-					GenerationRunID: 7,
-					CandidateID:     9,
-				})
-				return response.Confirmed, err
-			},
-			want: true,
-		},
-		{
-			name: "confirmation failure",
-			stub: &requestServiceStub{confirmErr: wantErr},
-			invoke: func(h *handler.GenerationHandler) (bool, error) {
-				response, err := h.ConfirmCandidate(newGenerationHandlerContext(), dto.ConfirmCandidateRequest{
-					GenerationRunID: 7,
-					CandidateID:     9,
-				})
-				return response.Confirmed, err
 			},
 			wantErr: wantErr,
 		},

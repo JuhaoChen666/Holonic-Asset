@@ -5,16 +5,27 @@ type RequestKind string
 type RunLifecycle string
 
 const (
-	RunLifecycleAccepted            RunLifecycle = "accepted"
-	RunLifecyclePlanning            RunLifecycle = "planning"
-	RunLifecyclePlanned             RunLifecycle = "planned"
-	RunLifecycleGenerating          RunLifecycle = "generating"
-	RunLifecyclePostProcessing      RunLifecycle = "post_processing"
-	RunLifecycleWaitingConfirmation RunLifecycle = "waiting_confirmation"
-	RunLifecycleCompleted           RunLifecycle = "completed"
-	RunLifecycleFailed              RunLifecycle = "failed"
-	RunLifecycleCancelled           RunLifecycle = "cancelled"
+	RunLifecycleAccepted       RunLifecycle = "accepted"
+	RunLifecyclePlanning       RunLifecycle = "planning"
+	RunLifecyclePlanned        RunLifecycle = "planned"
+	RunLifecycleGenerating     RunLifecycle = "generating"
+	RunLifecyclePostProcessing RunLifecycle = "post_processing"
+	RunLifecycleCompleted      RunLifecycle = "completed"
+	RunLifecycleFailed         RunLifecycle = "failed"
+	RunLifecycleCancelled      RunLifecycle = "cancelled"
 )
+
+const RunListStatusActive RunListStatus = "active"
+
+func ActiveRunLifecycles() []RunLifecycle {
+	return []RunLifecycle{
+		RunLifecycleAccepted,
+		RunLifecyclePlanning,
+		RunLifecyclePlanned,
+		RunLifecycleGenerating,
+		RunLifecyclePostProcessing,
+	}
+}
 
 const (
 	StepExecutorAI          StepExecutor = "ai"

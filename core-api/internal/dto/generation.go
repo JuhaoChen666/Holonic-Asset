@@ -21,6 +21,27 @@ type CreateGenerationResponse struct {
 	GenerationRunID domain.RunID `json:"generationRunId"`
 }
 
+type ListGenerationRunsRequest struct {
+	ProjectID uint                 `param:"project_id" json:"-"`
+	AssetID   *uint                `query:"assetId"`
+	Status    domain.RunListStatus `query:"status"`
+	Limit     int                  `query:"limit"`
+	Cursor    string               `query:"cursor"`
+}
+
+type GenerationRunListItemResponse struct {
+	ID        domain.RunID        `json:"id"`
+	ProjectID uint                `json:"projectId"`
+	AssetID   uint                `json:"assetId,omitempty"`
+	Kind      domain.RequestKind  `json:"kind"`
+	Lifecycle domain.RunLifecycle `json:"lifecycle"`
+}
+
+type ListGenerationRunsResponse struct {
+	Items      []GenerationRunListItemResponse `json:"items"`
+	NextCursor string                          `json:"nextCursor,omitempty"`
+}
+
 type GetGenerationRequest struct {
 	GenerationRunID domain.RunID `param:"run_id" json:"-"`
 }
@@ -33,19 +54,12 @@ type StepResponse struct {
 	TaskStatus   *taskdomain.Status  `json:"taskStatus,omitempty"`
 }
 
-type CandidateResponse struct {
-	ID       domain.CandidateID `json:"id"`
-	MediaIDs []string           `json:"mediaIds"`
-}
-
 type GetGenerationResponse struct {
-	ID                   domain.RunID        `json:"id"`
-	ProjectID            uint                `json:"projectId"`
-	Kind                 domain.RequestKind  `json:"kind"`
-	Lifecycle            domain.RunLifecycle `json:"lifecycle"`
-	ConfirmedCandidateID *domain.CandidateID `json:"confirmedCandidateId,omitempty"`
-	Steps                []StepResponse      `json:"steps"`
-	Candidates           []CandidateResponse `json:"candidates"`
+	ID        domain.RunID        `json:"id"`
+	ProjectID uint                `json:"projectId"`
+	Kind      domain.RequestKind  `json:"kind"`
+	Lifecycle domain.RunLifecycle `json:"lifecycle"`
+	Steps     []StepResponse      `json:"steps"`
 }
 
 type CancelGenerationRequest struct {
@@ -54,13 +68,4 @@ type CancelGenerationRequest struct {
 
 type CancelGenerationResponse struct {
 	Cancelled bool `json:"cancelled"`
-}
-
-type ConfirmCandidateRequest struct {
-	GenerationRunID domain.RunID       `param:"run_id" json:"-"`
-	CandidateID     domain.CandidateID `param:"candidate_id" json:"-"`
-}
-
-type ConfirmCandidateResponse struct {
-	Confirmed bool `json:"confirmed"`
 }
