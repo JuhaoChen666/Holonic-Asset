@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	domain "github.com/1024XEngineer/Holonic-Asset/internal/model/generation"
 	taskdomain "github.com/1024XEngineer/Holonic-Asset/internal/module/task"
@@ -20,6 +21,7 @@ var (
 	ErrTaskServiceRequired    = errors.New("generation: task service is required")
 	ErrAIServiceRequired      = errors.New("generation: AI service is required")
 	ErrGenerationTaskRequired = errors.New("generation: task is required")
+	ErrUnsupportedTaskType    = errors.New("generation: unsupported task type")
 )
 
 // GenerationAIService owns image generation and the resulting asset creation.
@@ -40,9 +42,20 @@ type RequestService interface {
 	Cancel(ctx context.Context, runID domain.RunID) error
 }
 
+// GenerationTaskHandler defines the concrete generation task handlers. Each
+// method owns the workflow for one payload type.
+type GenerationTaskHandler interface {
+	HandleCharacterPrototype(ctx context.Context, message *taskdomain.Task) (any, error)
+	HandleCharacterAnimation(ctx context.Context, message *taskdomain.Task) (any, error)
+	HandleObjectPrototype(ctx context.Context, message *taskdomain.Task) (any, error)
+	HandleObjectAnimation(ctx context.Context, message *taskdomain.Task) (any, error)
+	HandleTileSet(ctx context.Context, message *taskdomain.Task) (any, error)
+	HandleEmptyGenerationTask(ctx context.Context, message *taskdomain.Task) (any, error)
+}
+
 type GenerationService interface {
 	RequestService
-	Process(ctx context.Context, message *taskdomain.Task) error
+	GenerationTaskHandler
 }
 
 // generationService is the application boundary over the generic task module.
@@ -73,7 +86,12 @@ func (s *generationService) Create(
 		return 0, ErrTaskServiceRequired
 	}
 
-	payload, err := json.Marshal(domain.NewTaskPayload(request))
+	payloadValue, err := buildGenerationTaskPayload(request)
+	if err != nil {
+		return 0, err
+	}
+
+	payload, err := json.Marshal(payloadValue)
 	if err != nil {
 		return 0, err
 	}
@@ -84,6 +102,102 @@ func (s *generationService) Create(
 		Payload: payload,
 	})
 	return domain.RunID(taskID), err
+}
+
+func buildGenerationTaskPayload(request *domain.GenerationRequest) (any, error) {
+	if request == nil {
+		return nil, fmt.Errorf("generation: request is required")
+	}
+
+	switch request.Kind {
+	case domain.GenerateCharacterProtoType:
+		payload := domain.CreateCharacterPrototypePayload{}
+		if err := decodeGenerationParameters(request, &payload); err != nil {
+			return nil, err
+		}
+		payload.ProjectID = request.ProjectID
+		payload.CreativeBrief = valueOrFallback(payload.CreativeBrief, request.Prompt)
+		payload.Reference = valueOrFallback(payload.Reference, firstReference(request.ReferenceMediaIDs))
+		return payload, nil
+	case domain.GenerateCharacterAnimation:
+		payload := domain.CreateCharacterAnimationPayload{}
+		if err := decodeGenerationParameters(request, &payload); err != nil {
+			return nil, err
+		}
+		payload.ProjectID = request.ProjectID
+		payload.CreativeBrief = valueOrFallback(payload.CreativeBrief, request.Prompt)
+		if payload.ParentID == 0 && request.AssetID != nil {
+			payload.ParentID = *request.AssetID
+		}
+		return payload, nil
+	case domain.GenerateObjectProtoType:
+		payload := domain.CreateObjectPrototypePayload{}
+		if err := decodeGenerationParameters(request, &payload); err != nil {
+			return nil, err
+		}
+		payload.ProjectID = request.ProjectID
+		payload.CreativeBrief = valueOrFallback(payload.CreativeBrief, request.Prompt)
+		payload.Reference = valueOrFallback(payload.Reference, firstReference(request.ReferenceMediaIDs))
+		return payload, nil
+	case domain.GenerateObjectAnimation:
+		payload := domain.CreateObjectAnimationPayload{}
+		if err := decodeGenerationParameters(request, &payload); err != nil {
+			return nil, err
+		}
+		payload.ProjectID = request.ProjectID
+		payload.CreativeBrief = valueOrFallback(payload.CreativeBrief, request.Prompt)
+		if payload.ParentID == 0 && request.AssetID != nil {
+			payload.ParentID = *request.AssetID
+		}
+		return payload, nil
+	case domain.GenerateTileSet:
+		payload := domain.CreateTileSetPayload{}
+		if err := decodeGenerationParameters(request, &payload); err != nil {
+			return nil, err
+		}
+		payload.ProjectID = request.ProjectID
+		payload.CreativeBrief = valueOrFallback(payload.CreativeBrief, request.Prompt)
+		payload.Reference = valueOrFallback(payload.Reference, firstReference(request.ReferenceMediaIDs))
+		if payload.TileNum == 0 {
+			payload.TileNum = uint(len(payload.TileDescriptions))
+		}
+		return payload, nil
+	case domain.RegenerateCharacterProtoType,
+		domain.RegenerateCharacterAnimation,
+		domain.RegenerateCharacterFrames,
+		domain.RegenerateObjectProtoType,
+		domain.RegenerateObjectAnimation,
+		domain.RegenerateObjectFrames,
+		domain.RegenerateItem,
+		domain.RegenerateTiles:
+		return struct{}{}, nil
+	default:
+		return nil, fmt.Errorf("%w: %q", ErrUnsupportedTaskType, request.Kind)
+	}
+}
+
+func decodeGenerationParameters(request *domain.GenerationRequest, payload any) error {
+	if len(request.Parameters) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(request.Parameters, payload); err != nil {
+		return fmt.Errorf("generation: decode %s parameters: %w", request.Kind, err)
+	}
+	return nil
+}
+
+func valueOrFallback(value, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
+}
+
+func firstReference(references []string) string {
+	if len(references) == 0 {
+		return ""
+	}
+	return references[0]
 }
 
 func (s *generationService) List(
@@ -136,15 +250,23 @@ func (s *generationService) Get(ctx context.Context, runID domain.RunID) (*domai
 		return nil, err
 	}
 
-	var payload domain.TaskPayload
-	if err := json.Unmarshal(message.Payload, &payload); err != nil {
+	var scope struct {
+		ProjectID uint  `json:"project_id"`
+		AssetID   *uint `json:"asset_id"`
+		ParentID  *uint `json:"parent_id"`
+	}
+	if err := json.Unmarshal(message.Payload, &scope); err != nil {
 		return nil, err
+	}
+	assetID := scope.ParentID
+	if assetID == nil {
+		assetID = scope.AssetID
 	}
 
 	return &domain.GenerationRun{
 		ID:        domain.RunID(message.ID),
-		ProjectID: payload.ProjectID,
-		AssetID:   payload.AssetID,
+		ProjectID: scope.ProjectID,
+		AssetID:   assetID,
 		Kind:      domain.TaskType(message.Type),
 		Status:    message.Status,
 		Result:    message.Result,
@@ -159,29 +281,119 @@ func (s *generationService) Cancel(ctx context.Context, runID domain.RunID) erro
 	return s.tasks.UpdateStatus(ctx, uint(runID), taskdomain.StatusCancelled)
 }
 
-func (s *generationService) Process(ctx context.Context, message *taskdomain.Task) error {
+func (s *generationService) HandleCharacterPrototype(
+	_ context.Context,
+	message *taskdomain.Task,
+) (any, error) {
+	payload := domain.CreateCharacterPrototypePayload{}
+	if err := decodeGenerationTaskPayload(message, &payload); err != nil {
+		return nil, err
+	}
+	return nil, nil //nolint:nilnil // The handler has no business result until its workflow is implemented.
+}
+
+func (s *generationService) HandleCharacterAnimation(
+	_ context.Context,
+	message *taskdomain.Task,
+) (any, error) {
+	payload := domain.CreateCharacterAnimationPayload{}
+	if err := decodeGenerationTaskPayload(message, &payload); err != nil {
+		return nil, err
+	}
+	return nil, nil //nolint:nilnil // The handler has no business result until its workflow is implemented.
+}
+
+func (s *generationService) HandleObjectPrototype(
+	_ context.Context,
+	message *taskdomain.Task,
+) (any, error) {
+	payload := domain.CreateObjectPrototypePayload{}
+	if err := decodeGenerationTaskPayload(message, &payload); err != nil {
+		return nil, err
+	}
+	return nil, nil //nolint:nilnil // The handler has no business result until its workflow is implemented.
+}
+
+func (s *generationService) HandleObjectAnimation(
+	_ context.Context,
+	message *taskdomain.Task,
+) (any, error) {
+	payload := domain.CreateObjectAnimationPayload{}
+	if err := decodeGenerationTaskPayload(message, &payload); err != nil {
+		return nil, err
+	}
+	return nil, nil //nolint:nilnil // The handler has no business result until its workflow is implemented.
+}
+
+func (s *generationService) HandleTileSet(
+	_ context.Context,
+	message *taskdomain.Task,
+) (any, error) {
+	payload := domain.CreateTileSetPayload{}
+	if err := decodeGenerationTaskPayload(message, &payload); err != nil {
+		return nil, err
+	}
+	return nil, nil //nolint:nilnil // The handler has no business result until its workflow is implemented.
+}
+
+func (s *generationService) HandleEmptyGenerationTask(
+	_ context.Context,
+	message *taskdomain.Task,
+) (any, error) {
+	payload := struct{}{}
+	if err := decodeGenerationTaskPayload(message, &payload); err != nil {
+		return nil, err
+	}
+	return nil, nil //nolint:nilnil // The handler has no business result until its workflow is implemented.
+}
+
+func decodeGenerationTaskPayload(message *taskdomain.Task, payload any) error {
 	if message == nil {
 		return ErrGenerationTaskRequired
 	}
-	if s.tasks == nil {
-		return ErrTaskServiceRequired
+	if err := json.Unmarshal(message.Payload, payload); err != nil {
+		return fmt.Errorf("generation: decode %s task %d payload: %w", message.Type, message.ID, err)
 	}
-	if s.ai == nil {
-		return ErrAIServiceRequired
-	}
-	if err := s.tasks.UpdateStatus(ctx, message.ID, taskdomain.StatusProcessing); err != nil {
-		return err
-	}
+	return nil
+}
 
-	result, err := s.ai.Generate(ctx, domain.TaskType(message.Type), message.Payload)
-	if err != nil {
-		if updateErr := s.tasks.UpdateStatus(ctx, message.ID, taskdomain.StatusFailed); updateErr != nil {
-			return errors.Join(err, updateErr)
-		}
-		return err
-	}
+type generationTaskHandleFunc func(context.Context, *taskdomain.Task) (any, error)
 
-	return s.tasks.UpdateResult(ctx, message.ID, result)
+func adaptGenerationTaskHandler(handle generationTaskHandleFunc) taskdomain.Handler {
+	return taskdomain.HandlerFunc(func(ctx context.Context, message *taskdomain.Task) error {
+		_, err := handle(ctx, message)
+		return err
+	})
+}
+
+func RegisterGenerationTaskHandlers(
+	registry *taskdomain.Registry,
+	handlers GenerationTaskHandler,
+) {
+	registry.Register(string(domain.GenerateCharacterProtoType),
+		adaptGenerationTaskHandler(handlers.HandleCharacterPrototype))
+	registry.Register(string(domain.GenerateCharacterAnimation),
+		adaptGenerationTaskHandler(handlers.HandleCharacterAnimation))
+	registry.Register(string(domain.GenerateObjectProtoType),
+		adaptGenerationTaskHandler(handlers.HandleObjectPrototype))
+	registry.Register(string(domain.GenerateObjectAnimation),
+		adaptGenerationTaskHandler(handlers.HandleObjectAnimation))
+	registry.Register(string(domain.GenerateTileSet),
+		adaptGenerationTaskHandler(handlers.HandleTileSet))
+
+	emptyHandler := adaptGenerationTaskHandler(handlers.HandleEmptyGenerationTask)
+	for _, taskType := range []domain.TaskType{
+		domain.RegenerateCharacterProtoType,
+		domain.RegenerateCharacterAnimation,
+		domain.RegenerateCharacterFrames,
+		domain.RegenerateObjectProtoType,
+		domain.RegenerateObjectAnimation,
+		domain.RegenerateObjectFrames,
+		domain.RegenerateItem,
+		domain.RegenerateTiles,
+	} {
+		registry.Register(string(taskType), emptyHandler)
+	}
 }
 
 var _ GenerationService = (*generationService)(nil)

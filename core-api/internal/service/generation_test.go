@@ -72,6 +72,7 @@ func TestCreateBuildsOneTaskFromGenerationRequest(t *testing.T) {
 		Kind:              domain.GenerateCharacterAnimation,
 		Prompt:            "walk",
 		ReferenceMediaIDs: []string{"media-1"},
+		Parameters:        json.RawMessage(`{"asset_name":"hero walk"}`),
 	}
 
 	runID, err := generationService.Create(context.Background(), request)
@@ -86,42 +87,51 @@ func TestCreateBuildsOneTaskFromGenerationRequest(t *testing.T) {
 		t.Fatalf("unexpected task envelope: %+v", tasks.createdTask)
 	}
 
-	var payload domain.TaskPayload
+	var payload domain.CreateCharacterAnimationPayload
 	if err := json.Unmarshal(tasks.createdTask.Payload, &payload); err != nil {
 		t.Fatalf("decode task payload: %v", err)
 	}
-	if payload.ProjectID != request.ProjectID || payload.AssetID == nil ||
-		*payload.AssetID != assetID || payload.Prompt != request.Prompt ||
-		!reflect.DeepEqual(payload.ReferenceMediaIDs, request.ReferenceMediaIDs) {
+	if payload.ProjectID != request.ProjectID || payload.ParentID != assetID ||
+		payload.AssetName != "hero walk" || payload.CreativeBrief != request.Prompt {
 		t.Fatalf("unexpected task payload: %+v", payload)
 	}
 }
 
-func TestCreateProjectLevelTaskPayloadOmitsAssetID(t *testing.T) {
+func TestCreateBuildsCharacterPrototypePayload(t *testing.T) {
 	tasks := &taskServiceStub{createID: 17}
 	generationService := service.NewGenerationService(nil, tasks, nil)
 
 	_, err := generationService.Create(context.Background(), &domain.GenerationRequest{
-		ProjectID: 42,
-		Kind:      domain.GenerateCharacterProtoType,
-		Prompt:    "hero",
+		ProjectID:         42,
+		Kind:              domain.GenerateCharacterProtoType,
+		Prompt:            "hero",
+		ReferenceMediaIDs: []string{"media-1"},
+		Parameters: json.RawMessage(
+			`{"asset_name":"knight","canvas_size":"64x64","perspective":"top-down","direction_count":"4"}`,
+		),
 	})
 	if err != nil {
 		t.Fatalf("create generation: %v", err)
 	}
 
-	var payload map[string]json.RawMessage
+	var payload domain.CreateCharacterPrototypePayload
 	if err := json.Unmarshal(tasks.createdTask.Payload, &payload); err != nil {
 		t.Fatalf("decode task payload: %v", err)
 	}
-	if _, ok := payload["asset_id"]; ok {
-		t.Fatalf("project-level payload must omit asset_id: %s", tasks.createdTask.Payload)
+	if payload.ProjectID != 42 || payload.AssetName != "knight" ||
+		payload.CreativeBrief != "hero" || payload.Reference != "media-1" ||
+		payload.CanvasSize != "64x64" || payload.Perspective != "top-down" ||
+		payload.DirectionCount != "4" {
+		t.Fatalf("unexpected character prototype payload: %+v", payload)
 	}
 }
 
 func TestGetProjectsTaskAsGenerationRun(t *testing.T) {
 	assetID := uint(9)
-	payload, err := json.Marshal(domain.TaskPayload{ProjectID: 42, AssetID: &assetID})
+	payload, err := json.Marshal(domain.CreateCharacterAnimationPayload{
+		ProjectID: 42,
+		ParentID:  assetID,
+	})
 	if err != nil {
 		t.Fatalf("encode task payload: %v", err)
 	}
@@ -231,14 +241,104 @@ func (s *generationAIServiceStub) Generate(
 	return s.result, s.err
 }
 
-func TestProcessPassesPayloadToAIAndCompletesTask(t *testing.T) {
-	payload := json.RawMessage(`{"project_id":42,"prompt":"hero"}`)
-	result := json.RawMessage(`{"asset_id":7}`)
+func TestRegisteredGenerationTaskHandlersDecodeTheirPayloads(t *testing.T) {
+	tests := []struct {
+		taskType domain.TaskType
+		payload  json.RawMessage
+	}{
+		{
+			taskType: domain.GenerateCharacterProtoType,
+			payload:  json.RawMessage(`{"asset_name":"hero","creative_brief":"pixel knight","canvas_size":"64x64","perspective":"top-down","direction_count":"4","reference":"media-1","project_id":11}`),
+		},
+		{
+			taskType: domain.GenerateCharacterAnimation,
+			payload:  json.RawMessage(`{"asset_name":"walk","project_id":11,"parent_id":7,"creative_brief":"walking cycle"}`),
+		},
+		{
+			taskType: domain.GenerateObjectProtoType,
+			payload:  json.RawMessage(`{"asset_name":"chest","creative_brief":"wooden chest","canvas_size":"64x64","perspective":"isometric","reference":"media-2","project_id":11}`),
+		},
+		{
+			taskType: domain.GenerateObjectAnimation,
+			payload:  json.RawMessage(`{"asset_name":"open chest","project_id":11,"parent_id":8,"creative_brief":"opening animation"}`),
+		},
+		{
+			taskType: domain.GenerateTileSet,
+			payload:  json.RawMessage(`{"asset_name":"forest","project_id":11,"creative_brief":"forest ground","tile_num":2,"tile_descriptions":["grass","path"],"reference":"media-3"}`),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.taskType), func(t *testing.T) {
+			tasks := &taskServiceStub{}
+			ai := &generationAIServiceStub{}
+			generationService := service.NewGenerationService(nil, tasks, ai)
+			registry := taskdomain.NewRegistry()
+			service.RegisterGenerationTaskHandlers(registry, generationService)
+
+			message := &taskdomain.Task{ID: 17, Type: string(tt.taskType), Payload: tt.payload}
+			if err := registry.Dispatch(context.Background(), message); err != nil {
+				t.Fatalf("dispatch generation task: %v", err)
+			}
+			if ai.payload != nil || len(tasks.statusUpdates) != 0 {
+				t.Fatalf("handler skeleton must not execute business logic: payload=%s statuses=%+v",
+					ai.payload, tasks.statusUpdates)
+			}
+		})
+	}
+}
+
+func TestRegisteredGenerationTaskHandlerRejectsMismatchedPayload(t *testing.T) {
 	tasks := &taskServiceStub{}
-	ai := &generationAIServiceStub{result: result}
+	ai := &generationAIServiceStub{}
+	generationService := service.NewGenerationService(nil, tasks, ai)
+	registry := taskdomain.NewRegistry()
+	service.RegisterGenerationTaskHandlers(registry, generationService)
+
+	err := registry.Dispatch(context.Background(), &taskdomain.Task{
+		ID:      17,
+		Type:    string(domain.GenerateCharacterProtoType),
+		Payload: json.RawMessage(`{"project_id":"not-a-number"}`),
+	})
+	if err == nil {
+		t.Fatal("expected payload decode error")
+	}
+	if ai.payload != nil || len(tasks.statusUpdates) != 0 {
+		t.Fatalf("malformed task must not be processed: payload=%s statuses=%+v",
+			ai.payload, tasks.statusUpdates)
+	}
+}
+
+func TestRegisterGenerationTaskHandlersIncludesEmptyPayloadTypes(t *testing.T) {
+	tasks := &taskServiceStub{}
+	ai := &generationAIServiceStub{}
+	generationService := service.NewGenerationService(nil, tasks, ai)
+	registry := taskdomain.NewRegistry()
+	service.RegisterGenerationTaskHandlers(registry, generationService)
+
+	for _, taskType := range domain.TaskTypes() {
+		message := &taskdomain.Task{
+			ID:      uint(len(tasks.statusUpdates) + 1),
+			Type:    string(taskType),
+			Payload: json.RawMessage(`{}`),
+		}
+		if err := registry.Dispatch(context.Background(), message); err != nil {
+			t.Fatalf("dispatch task type %q: %v", taskType, err)
+		}
+	}
+	if ai.payload != nil || len(tasks.statusUpdates) != 0 {
+		t.Fatalf("handler skeleton must not execute business logic: payload=%s statuses=%+v",
+			ai.payload, tasks.statusUpdates)
+	}
+}
+
+func TestHandleCharacterPrototypeOnlyDecodesPayload(t *testing.T) {
+	payload := json.RawMessage(`{"asset_name":"hero","creative_brief":"pixel knight","canvas_size":"64x64","perspective":"top-down","direction_count":"4","reference":"media-1","project_id":42}`)
+	tasks := &taskServiceStub{}
+	ai := &generationAIServiceStub{}
 	generationService := service.NewGenerationService(nil, tasks, ai)
 
-	err := generationService.Process(context.Background(), &taskdomain.Task{
+	got, err := generationService.HandleCharacterPrototype(context.Background(), &taskdomain.Task{
 		ID:      17,
 		Type:    string(domain.GenerateCharacterProtoType),
 		Payload: payload,
@@ -246,29 +346,11 @@ func TestProcessPassesPayloadToAIAndCompletesTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handle generation task: %v", err)
 	}
-	if ai.taskType != domain.GenerateCharacterProtoType || !reflect.DeepEqual(ai.payload, payload) {
-		t.Fatalf("unexpected AI request: type=%s payload=%s", ai.taskType, ai.payload)
+	if got != nil {
+		t.Fatalf("handler skeleton must return a nil result, got %v", got)
 	}
-	if len(tasks.statusUpdates) != 1 || tasks.statusUpdates[0].status != taskdomain.StatusProcessing {
-		t.Fatalf("unexpected status updates: %+v", tasks.statusUpdates)
-	}
-	if tasks.resultTaskID != 17 || !reflect.DeepEqual(tasks.result, result) {
-		t.Fatalf("unexpected task result: id=%d result=%s", tasks.resultTaskID, tasks.result)
-	}
-}
-
-func TestProcessMarksTaskFailedWhenAIFails(t *testing.T) {
-	wantErr := errors.New("AI failed")
-	tasks := &taskServiceStub{}
-	generationService := service.NewGenerationService(nil, tasks, &generationAIServiceStub{err: wantErr})
-
-	err := generationService.Process(context.Background(), &taskdomain.Task{ID: 17})
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected AI error, got %v", err)
-	}
-	if len(tasks.statusUpdates) != 2 ||
-		tasks.statusUpdates[0].status != taskdomain.StatusProcessing ||
-		tasks.statusUpdates[1].status != taskdomain.StatusFailed {
-		t.Fatalf("unexpected status updates: %+v", tasks.statusUpdates)
+	if ai.payload != nil || len(tasks.statusUpdates) != 0 || tasks.result != nil {
+		t.Fatalf("handler skeleton must not execute business logic: payload=%s statuses=%+v result=%s",
+			ai.payload, tasks.statusUpdates, tasks.result)
 	}
 }

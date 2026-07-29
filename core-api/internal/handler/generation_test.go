@@ -27,9 +27,6 @@ type requestServiceStub struct {
 	run           *domain.GenerationRun
 	cancelID      domain.RunID
 	cancelErr     error
-	processCtx    context.Context
-	processTask   *taskdomain.Task
-	processErr    error
 }
 
 func (s *requestServiceStub) Create(
@@ -58,108 +55,6 @@ func (s *requestServiceStub) Get(context.Context, domain.RunID) (*domain.Generat
 func (s *requestServiceStub) Cancel(_ context.Context, runID domain.RunID) error {
 	s.cancelID = runID
 	return s.cancelErr
-}
-
-func (s *requestServiceStub) Process(ctx context.Context, message *taskdomain.Task) error {
-	s.processCtx = ctx
-	s.processTask = message
-	return s.processErr
-}
-
-func TestRegisteredGenerationTaskHandlersDecodeTheirPayloads(t *testing.T) {
-	tests := []struct {
-		taskType domain.TaskType
-		payload  json.RawMessage
-	}{
-		{
-			taskType: domain.GenerateCharacterProtoType,
-			payload:  json.RawMessage(`{"asset_name":"hero","creative_brief":"pixel knight","canvas_size":"64x64","perspective":"top-down","direction_count":"4","reference":"media-1","project_id":11}`),
-		},
-		{
-			taskType: domain.GenerateCharacterAnimation,
-			payload:  json.RawMessage(`{"asset_name":"walk","project_id":11,"parent_id":7,"creative_brief":"walking cycle"}`),
-		},
-		{
-			taskType: domain.GenerateObjectProtoType,
-			payload:  json.RawMessage(`{"asset_name":"chest","creative_brief":"wooden chest","canvas_size":"64x64","perspective":"isometric","reference":"media-2","project_id":11}`),
-		},
-		{
-			taskType: domain.GenerateObjectAnimation,
-			payload:  json.RawMessage(`{"asset_name":"open chest","project_id":11,"parent_id":8,"creative_brief":"opening animation"}`),
-		},
-		{
-			taskType: domain.GenerateTileSet,
-			payload:  json.RawMessage(`{"asset_name":"forest","project_id":11,"creative_brief":"forest ground","tile_num":2,"tile_descriptions":["grass","path"],"reference":"media-3"}`),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(string(tt.taskType), func(t *testing.T) {
-			registry := taskdomain.NewRegistry()
-			stub := &requestServiceStub{}
-			handler.RegisterGenerationTaskHandlers(registry, handler.NewGenerationHandler(stub))
-			registered, ok := registry.Get(string(tt.taskType))
-			if !ok {
-				t.Fatalf("task type %q was not registered", tt.taskType)
-			}
-
-			message := &taskdomain.Task{ID: 17, Type: string(tt.taskType), Payload: tt.payload}
-			type contextKey string
-			ctx := context.WithValue(context.Background(), contextKey("request"), "generation")
-			if err := registered.Handle(ctx, message); err != nil {
-				t.Fatalf("handle task: %v", err)
-			}
-			if stub.processCtx != ctx || stub.processTask != message {
-				t.Fatalf("task was not delegated unchanged: context=%v task=%+v",
-					stub.processCtx, stub.processTask)
-			}
-		})
-	}
-}
-
-func TestTypedGenerationTaskHandlerRejectsMismatchedPayload(t *testing.T) {
-	registry := taskdomain.NewRegistry()
-	stub := &requestServiceStub{}
-	handler.RegisterGenerationTaskHandlers(registry, handler.NewGenerationHandler(stub))
-	registered, ok := registry.Get(string(domain.GenerateCharacterProtoType))
-	if !ok {
-		t.Fatal("character prototype handler was not registered")
-	}
-
-	err := registered.Handle(context.Background(), &taskdomain.Task{
-		ID:      17,
-		Type:    string(domain.GenerateCharacterProtoType),
-		Payload: json.RawMessage(`{"project_id":"not-a-number"}`),
-	})
-	if err == nil {
-		t.Fatal("expected payload decode error")
-	}
-	if stub.processTask != nil {
-		t.Fatalf("malformed task must not be processed: %+v", stub.processTask)
-	}
-}
-
-func TestRegisterGenerationTaskHandlersIncludesEmptyPayloadTypes(t *testing.T) {
-	registry := taskdomain.NewRegistry()
-	stub := &requestServiceStub{}
-	generationHandler := handler.NewGenerationHandler(stub)
-
-	handler.RegisterGenerationTaskHandlers(registry, generationHandler)
-
-	for _, taskType := range domain.TaskTypes() {
-		registered, ok := registry.Get(string(taskType))
-		if !ok {
-			t.Fatalf("task type %q was not registered", taskType)
-		}
-
-		message := &taskdomain.Task{Type: string(taskType), Payload: json.RawMessage(`{}`)}
-		if err := registered.Handle(context.Background(), message); err != nil {
-			t.Fatalf("handle task type %q: %v", taskType, err)
-		}
-		if stub.processTask != message {
-			t.Fatalf("task type %q was not delegated", taskType)
-		}
-	}
 }
 
 func TestCreateMapsTransportRequest(t *testing.T) {
