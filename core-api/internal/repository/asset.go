@@ -153,17 +153,22 @@ func (r *AssetRepositoryImpl) GetAssetsByProjectID(ctx context.Context, projectI
 
 func matchesAssetFilter(asset domain.Asset, filter domain.AssetListFilter) bool {
 	query := strings.TrimSpace(filter.Query)
-	if query != "" && !strings.Contains(strings.ToLower(asset.Name), query) && !strings.Contains(strings.ToLower(asset.Description), query) {
+	if query != "" &&
+		!strings.Contains(asset.Name, query) &&
+		!strings.Contains(asset.Description, query) {
 		return false
 	}
+
 	if len(filter.Types) > 0 && !containsAssetType(filter.Types, asset.Type) {
 		return false
 	}
+
 	for _, tag := range filter.Tags {
 		if !containsTag(asset.Tags, tag) {
 			return false
 		}
 	}
+
 	return true
 }
 
