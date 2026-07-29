@@ -16,3 +16,8 @@ log:
   maxBackups: 7
   maxAge: 14
   compress: true
+
+qna:
+  baseURL: "https://api.qnaigc.com"
+  apiKey: ""
+  defaultModel: "openai/gpt-image-2"
