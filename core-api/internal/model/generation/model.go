@@ -7,41 +7,32 @@ import (
 )
 
 type RunID uint
-type PlanID uint
-type StepID uint
 type RunListStatus string
+
+const RunListStatusActive RunListStatus = "active"
 
 // GenerationRequest captures the business intent accepted by generation.
 // Kind-specific parameters remain bounded data interpreted by generation.
 type GenerationRequest struct {
 	ProjectID         uint
-	AssetID           uint
-	Kind              RequestKind
+	AssetID           *uint
+	Kind              TaskType
 	Prompt            string
 	ReferenceMediaIDs []string
 	TargetAssetPaths  []string
 	Parameters        json.RawMessage
 }
 
-type Failure struct {
-	Code    string
-	Message string
-}
-
+// GenerationRun is a task-backed projection. ID and Status come directly from
+// the task record; generation does not persist a separate run state.
 type GenerationRun struct {
-	ID             RunID
-	PlanningTaskID *uint
-	ProjectID      uint
-	Request        GenerationRequest
-	PlanID         PlanID
-	Lifecycle      RunLifecycle
-	Failure        *Failure
-}
-
-// GenerationDetail is assembled from generation records and task state.
-type GenerationDetail struct {
-	Run   GenerationRun
-	Steps []StepDetail
+	ID        RunID
+	ProjectID uint
+	AssetID   *uint
+	Kind      TaskType
+	Status    taskdomain.Status
+	Result    json.RawMessage
+	Error     string
 }
 
 // RunListQuery contains the client-facing list semantics. The service expands
@@ -57,7 +48,7 @@ type RunListQuery struct {
 type RunListFilter struct {
 	ProjectID        uint
 	AssetID          *uint
-	Lifecycles       []RunLifecycle
+	Statuses         []taskdomain.Status
 	IncludeTaskTypes []TaskType
 	ExcludeTaskTypes []TaskType
 	Limit            int
@@ -69,32 +60,9 @@ type RunListPage struct {
 	NextCursor string
 }
 
-// StepDetail carries task-owned execution state without persisting a duplicate
-// status in the generation module.
-type StepDetail struct {
-	Step       Step
-	TaskStatus *taskdomain.Status
-}
-
-type Plan struct {
-	ID    PlanID
-	RunID RunID
-	Steps []Step
-}
-
-type Step struct {
-	ID           StepID
-	TaskID       *uint
-	RunID        RunID
-	PlanID       PlanID
-	Key          string
-	Type         string
-	Executor     StepExecutor
-	Dependencies []StepID
-	Parameters   json.RawMessage
-}
-
-type StepResult struct {
-	MediaIDs []string
-	Metadata json.RawMessage
+func ActiveTaskStatuses() []taskdomain.Status {
+	return []taskdomain.Status{
+		taskdomain.StatusPending,
+		taskdomain.StatusProcessing,
+	}
 }

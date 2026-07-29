@@ -27,3 +27,21 @@ func ProjectLevelTaskTypes() []TaskType {
 		GenerateTileSet,
 	}
 }
+
+func TaskTypes() []TaskType {
+	return []TaskType{
+		GenerateCharacterProtoType,
+		GenerateCharacterAnimation,
+		RegenerateCharacterProtoType,
+		RegenerateCharacterAnimation,
+		RegenerateCharacterFrames,
+		GenerateObjectProtoType,
+		GenerateObjectAnimation,
+		RegenerateObjectProtoType,
+		RegenerateObjectAnimation,
+		RegenerateObjectFrames,
+		GenerateTileSet,
+		RegenerateItem,
+		RegenerateTiles,
+	}
+}

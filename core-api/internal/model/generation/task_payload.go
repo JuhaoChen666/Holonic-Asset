@@ -1,105 +1,30 @@
 package generation
 
-type GenerateCharacterProtoTypeJob struct {
-	TaskID    uint `json:"task_id"`
-	ProjectID uint `json:"project_id"`
-	AssetID   uint `json:"asset_id"`
+import "encoding/json"
+
+// TaskPayload is owned by generation while the task module treats it as opaque JSON.
+type TaskPayload struct {
+	ProjectID         uint            `json:"project_id"`
+	AssetID           *uint           `json:"asset_id,omitempty"`
+	Prompt            string          `json:"prompt"`
+	ReferenceMediaIDs []string        `json:"reference_media_ids,omitempty"`
+	TargetAssetPaths  []string        `json:"target_asset_paths,omitempty"`
+	Parameters        json.RawMessage `json:"parameters,omitempty"`
 }
 
-func (GenerateCharacterProtoTypeJob) Kind() string { return string(GenerateCharacterProtoType) }
-
-type GenerateCharacterAnimationJob struct {
-	TaskID    uint `json:"task_id"`
-	ProjectID uint `json:"project_id"`
-	AssetID   uint `json:"asset_id"`
+type TaskResult struct {
+	AssetID  *uint           `json:"asset_id,omitempty"`
+	MediaIDs []string        `json:"media_ids,omitempty"`
+	Metadata json.RawMessage `json:"metadata,omitempty"`
 }
 
-func (GenerateCharacterAnimationJob) Kind() string { return string(GenerateCharacterAnimation) }
-
-type RegenerateCharacterProtoTypeJob struct {
-	TaskID    uint `json:"task_id"`
-	ProjectID uint `json:"project_id"`
-	AssetID   uint `json:"asset_id"`
+func NewTaskPayload(request *GenerationRequest) TaskPayload {
+	return TaskPayload{
+		ProjectID:         request.ProjectID,
+		AssetID:           request.AssetID,
+		Prompt:            request.Prompt,
+		ReferenceMediaIDs: request.ReferenceMediaIDs,
+		TargetAssetPaths:  request.TargetAssetPaths,
+		Parameters:        request.Parameters,
+	}
 }
-
-func (RegenerateCharacterProtoTypeJob) Kind() string { return string(RegenerateCharacterProtoType) }
-
-type RegenerateCharacterAnimationJob struct {
-	TaskID    uint `json:"task_id"`
-	ProjectID uint `json:"project_id"`
-	AssetID   uint `json:"asset_id"`
-}
-
-func (RegenerateCharacterAnimationJob) Kind() string { return string(RegenerateCharacterAnimation) }
-
-type RegenerateCharacterFramesJob struct {
-	TaskID    uint `json:"task_id"`
-	ProjectID uint `json:"project_id"`
-	AssetID   uint `json:"asset_id"`
-}
-
-func (RegenerateCharacterFramesJob) Kind() string { return string(RegenerateCharacterFrames) }
-
-type GenerateObjectProtoTypeJob struct {
-	TaskID    uint `json:"task_id"`
-	ProjectID uint `json:"project_id"`
-	AssetID   uint `json:"asset_id"`
-}
-
-func (GenerateObjectProtoTypeJob) Kind() string { return string(GenerateObjectProtoType) }
-
-type GenerateObjectAnimationJob struct {
-	TaskID    uint `json:"task_id"`
-	ProjectID uint `json:"project_id"`
-	AssetID   uint `json:"asset_id"`
-}
-
-func (GenerateObjectAnimationJob) Kind() string { return string(GenerateObjectAnimation) }
-
-type RegenerateObjectProtoTypeJob struct {
-	TaskID    uint `json:"task_id"`
-	ProjectID uint `json:"project_id"`
-	AssetID   uint `json:"asset_id"`
-}
-
-func (RegenerateObjectProtoTypeJob) Kind() string { return string(RegenerateObjectProtoType) }
-
-type RegenerateObjectAnimationJob struct {
-	TaskID    uint `json:"task_id"`
-	ProjectID uint `json:"project_id"`
-	AssetID   uint `json:"asset_id"`
-}
-
-func (RegenerateObjectAnimationJob) Kind() string { return string(RegenerateObjectAnimation) }
-
-type RegenerateObjectFramesJob struct {
-	TaskID    uint `json:"task_id"`
-	ProjectID uint `json:"project_id"`
-	AssetID   uint `json:"asset_id"`
-}
-
-func (RegenerateObjectFramesJob) Kind() string { return string(RegenerateObjectFrames) }
-
-type GenerateTileSetJob struct {
-	TaskID    uint `json:"task_id"`
-	ProjectID uint `json:"project_id"`
-}
-
-func (GenerateTileSetJob) Kind() string { return string(GenerateTileSet) }
-
-type RegenerateItemJob struct {
-	TaskID    uint `json:"task_id"`
-	ProjectID uint `json:"project_id"`
-	AssetID   uint `json:"asset_id"`
-	ItemIndex int  `json:"item_index"`
-}
-
-func (RegenerateItemJob) Kind() string { return string(RegenerateItem) }
-
-type RegenerateTilesJob struct {
-	TaskID    uint `json:"task_id"`
-	ProjectID uint `json:"project_id"`
-	AssetID   uint `json:"asset_id"`
-}
-
-func (RegenerateTilesJob) Kind() string { return string(RegenerateTiles) }

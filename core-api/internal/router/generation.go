@@ -14,8 +14,8 @@ type GenerationRouter interface {
 	Cancel(*echox.Context, dto.CancelGenerationRequest) (dto.CancelGenerationResponse, error)
 }
 
-// RegisterRoutes exposes generation lifecycle use cases. Step execution and AI
-// provider operations remain internal application interfaces.
+// RegisterGenerationRoutes exposes task-backed generation use cases. AI Service
+// remains responsible for generation and any resulting asset creation.
 func RegisterGenerationRoutes(e *echo.Group, r GenerationRouter) {
 	projects := e.Group("/projects")
 	projects.POST("/:project_id/generation-runs", echox.WrapReq(r.Create))

@@ -8,13 +8,13 @@ import (
 )
 
 type CreateGenerationRequest struct {
-	ProjectID         uint               `param:"project_id" json:"-"`
-	AssetID           uint               `json:"assetId,omitempty"`
-	Kind              domain.RequestKind `json:"kind"`
-	Prompt            string             `json:"prompt"`
-	ReferenceMediaIDs []string           `json:"referenceMediaIds,omitempty"`
-	TargetAssetPaths  []string           `json:"targetAssetPaths,omitempty"`
-	Parameters        json.RawMessage    `json:"parameters,omitempty"`
+	ProjectID         uint            `param:"project_id" json:"-"`
+	AssetID           *uint           `json:"assetId,omitempty"`
+	Kind              domain.TaskType `json:"kind"`
+	Prompt            string          `json:"prompt"`
+	ReferenceMediaIDs []string        `json:"referenceMediaIds,omitempty"`
+	TargetAssetPaths  []string        `json:"targetAssetPaths,omitempty"`
+	Parameters        json.RawMessage `json:"parameters,omitempty"`
 }
 
 type CreateGenerationResponse struct {
@@ -30,11 +30,11 @@ type ListGenerationRunsRequest struct {
 }
 
 type GenerationRunListItemResponse struct {
-	ID        domain.RunID        `json:"id"`
-	ProjectID uint                `json:"projectId"`
-	AssetID   uint                `json:"assetId,omitempty"`
-	Kind      domain.RequestKind  `json:"kind"`
-	Lifecycle domain.RunLifecycle `json:"lifecycle"`
+	ID        domain.RunID      `json:"id"`
+	ProjectID uint              `json:"projectId"`
+	AssetID   *uint             `json:"assetId,omitempty"`
+	Kind      domain.TaskType   `json:"kind"`
+	Status    taskdomain.Status `json:"status"`
 }
 
 type ListGenerationRunsResponse struct {
@@ -46,20 +46,14 @@ type GetGenerationRequest struct {
 	GenerationRunID domain.RunID `param:"run_id" json:"-"`
 }
 
-type StepResponse struct {
-	ID           domain.StepID       `json:"id"`
-	Type         string              `json:"type"`
-	Executor     domain.StepExecutor `json:"executor"`
-	Dependencies []domain.StepID     `json:"dependencies"`
-	TaskStatus   *taskdomain.Status  `json:"taskStatus,omitempty"`
-}
-
 type GetGenerationResponse struct {
-	ID        domain.RunID        `json:"id"`
-	ProjectID uint                `json:"projectId"`
-	Kind      domain.RequestKind  `json:"kind"`
-	Lifecycle domain.RunLifecycle `json:"lifecycle"`
-	Steps     []StepResponse      `json:"steps"`
+	ID        domain.RunID      `json:"id"`
+	ProjectID uint              `json:"projectId"`
+	AssetID   *uint             `json:"assetId,omitempty"`
+	Kind      domain.TaskType   `json:"kind"`
+	Status    taskdomain.Status `json:"status"`
+	Result    json.RawMessage   `json:"result,omitempty"`
+	Error     string            `json:"error,omitempty"`
 }
 
 type CancelGenerationRequest struct {

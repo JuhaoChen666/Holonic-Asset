@@ -1,22 +1,36 @@
 package handler
 
 import (
+	"context"
 	"errors"
 
 	"github.com/labstack/echo/v4"
 
 	"github.com/1024XEngineer/Holonic-Asset/internal/dto"
 	domain "github.com/1024XEngineer/Holonic-Asset/internal/model/generation"
+	taskdomain "github.com/1024XEngineer/Holonic-Asset/internal/module/task"
 	"github.com/1024XEngineer/Holonic-Asset/internal/service"
 	"github.com/1024XEngineer/Holonic-Asset/pkg/echox"
 )
 
 type GenerationHandler struct {
-	service service.RequestService
+	service service.GenerationService
 }
 
-func NewGenerationHandler(generationService service.RequestService) *GenerationHandler {
+func NewGenerationHandler(generationService service.GenerationService) *GenerationHandler {
 	return &GenerationHandler{service: generationService}
+}
+
+// Handle is the task-consumer entry point for the same generation service used
+// by the HTTP methods below.
+func (h *GenerationHandler) Handle(ctx context.Context, message *taskdomain.Task) error {
+	return h.service.Process(ctx, message)
+}
+
+func RegisterGenerationTaskHandlers(registry *taskdomain.Registry, h *GenerationHandler) {
+	for _, taskType := range domain.TaskTypes() {
+		registry.Register(string(taskType), h)
+	}
 }
 
 func (h *GenerationHandler) Create(
@@ -62,9 +76,9 @@ func (h *GenerationHandler) List(
 		items[i] = dto.GenerationRunListItemResponse{
 			ID:        run.ID,
 			ProjectID: run.ProjectID,
-			AssetID:   run.Request.AssetID,
-			Kind:      run.Request.Kind,
-			Lifecycle: run.Lifecycle,
+			AssetID:   run.AssetID,
+			Kind:      run.Kind,
+			Status:    run.Status,
 		}
 	}
 
@@ -78,30 +92,19 @@ func (h *GenerationHandler) Get(
 	ctx *echox.Context,
 	request dto.GetGenerationRequest,
 ) (dto.GetGenerationResponse, error) {
-	detail, err := h.service.Get(ctx, request.GenerationRunID)
+	run, err := h.service.Get(ctx, request.GenerationRunID)
 	if err != nil {
 		return dto.GetGenerationResponse{}, err
 	}
 
-	steps := make([]dto.StepResponse, len(detail.Steps))
-	for i := range detail.Steps {
-		stepDetail := detail.Steps[i]
-		step := stepDetail.Step
-		steps[i] = dto.StepResponse{
-			ID:           step.ID,
-			Type:         step.Type,
-			Executor:     step.Executor,
-			Dependencies: step.Dependencies,
-			TaskStatus:   stepDetail.TaskStatus,
-		}
-	}
-
 	return dto.GetGenerationResponse{
-		ID:        detail.Run.ID,
-		ProjectID: detail.Run.ProjectID,
-		Kind:      detail.Run.Request.Kind,
-		Lifecycle: detail.Run.Lifecycle,
-		Steps:     steps,
+		ID:        run.ID,
+		ProjectID: run.ProjectID,
+		AssetID:   run.AssetID,
+		Kind:      run.Kind,
+		Status:    run.Status,
+		Result:    run.Result,
+		Error:     run.Error,
 	}, nil
 }
 
@@ -112,3 +115,5 @@ func (h *GenerationHandler) Cancel(
 	err := h.service.Cancel(ctx, request.GenerationRunID)
 	return dto.CancelGenerationResponse{Cancelled: err == nil}, err
 }
+
+var _ taskdomain.Handler = (*GenerationHandler)(nil)

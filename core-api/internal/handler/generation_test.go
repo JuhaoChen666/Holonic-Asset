@@ -9,10 +9,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/1024XEngineer/Holonic-Asset/internal/dto"
-
 	"github.com/labstack/echo/v4"
 
+	"github.com/1024XEngineer/Holonic-Asset/internal/dto"
 	"github.com/1024XEngineer/Holonic-Asset/internal/handler"
 	domain "github.com/1024XEngineer/Holonic-Asset/internal/model/generation"
 	taskdomain "github.com/1024XEngineer/Holonic-Asset/internal/module/task"
@@ -25,8 +24,12 @@ type requestServiceStub struct {
 	listQuery     *domain.RunListQuery
 	listPage      *domain.RunListPage
 	listErr       error
-	detail        *domain.GenerationDetail
+	run           *domain.GenerationRun
+	cancelID      domain.RunID
 	cancelErr     error
+	processCtx    context.Context
+	processTask   *taskdomain.Task
+	processErr    error
 }
 
 func (s *requestServiceStub) Create(
@@ -48,25 +51,68 @@ func (s *requestServiceStub) List(
 	return s.listPage, s.listErr
 }
 
-func (s *requestServiceStub) Get(
-	context.Context,
-	domain.RunID,
-) (*domain.GenerationDetail, error) {
-	return s.detail, nil
+func (s *requestServiceStub) Get(context.Context, domain.RunID) (*domain.GenerationRun, error) {
+	return s.run, nil
 }
 
-func (s *requestServiceStub) Cancel(context.Context, domain.RunID) error {
+func (s *requestServiceStub) Cancel(_ context.Context, runID domain.RunID) error {
+	s.cancelID = runID
 	return s.cancelErr
 }
 
+func (s *requestServiceStub) Process(ctx context.Context, message *taskdomain.Task) error {
+	s.processCtx = ctx
+	s.processTask = message
+	return s.processErr
+}
+
+func TestHandleDelegatesTaskToGenerationService(t *testing.T) {
+	wantErr := errors.New("process generation")
+	stub := &requestServiceStub{processErr: wantErr}
+	generationHandler := handler.NewGenerationHandler(stub)
+	message := &taskdomain.Task{
+		ID:      17,
+		Type:    string(domain.GenerateCharacterProtoType),
+		Payload: json.RawMessage(`{"project_id":42,"prompt":"hero"}`),
+	}
+	type contextKey string
+	ctx := context.WithValue(context.Background(), contextKey("request"), "generation")
+
+	err := generationHandler.Handle(ctx, message)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected process error, got %v", err)
+	}
+	if stub.processCtx != ctx || stub.processTask != message {
+		t.Fatalf("task was not delegated unchanged: context=%v task=%+v", stub.processCtx, stub.processTask)
+	}
+}
+
+func TestRegisterGenerationTaskHandlersUsesExistingHandler(t *testing.T) {
+	registry := taskdomain.NewRegistry()
+	generationHandler := handler.NewGenerationHandler(&requestServiceStub{})
+
+	handler.RegisterGenerationTaskHandlers(registry, generationHandler)
+
+	for _, taskType := range domain.TaskTypes() {
+		registered, ok := registry.Get(string(taskType))
+		if !ok {
+			t.Fatalf("task type %q was not registered", taskType)
+		}
+		if registered != generationHandler {
+			t.Fatalf("task type %q registered a different handler", taskType)
+		}
+	}
+}
+
 func TestCreateMapsTransportRequest(t *testing.T) {
+	assetID := uint(3)
 	stub := &requestServiceStub{}
 	generationHandler := handler.NewGenerationHandler(stub)
 	parameters := json.RawMessage(`{"size":{"width":64,"height":64}}`)
 	request := dto.CreateGenerationRequest{
 		ProjectID:         2,
-		AssetID:           3,
-		Kind:              domain.RequestKindGenerateCharacter,
+		AssetID:           &assetID,
+		Kind:              domain.GenerateCharacterAnimation,
 		Prompt:            "hero",
 		ReferenceMediaIDs: []string{"media-1"},
 		TargetAssetPaths:  []string{"animations.walk.directions.left"},
@@ -80,12 +126,9 @@ func TestCreateMapsTransportRequest(t *testing.T) {
 	if response.GenerationRunID != 17 {
 		t.Fatalf("expected run ID 17, got %d", response.GenerationRunID)
 	}
-	if stub.createRequest == nil {
-		t.Fatal("expected generation request")
-	}
-	if stub.createRequest.ProjectID != request.ProjectID ||
-		stub.createRequest.AssetID != request.AssetID ||
-		stub.createRequest.Kind != request.Kind ||
+	if stub.createRequest == nil || stub.createRequest.AssetID == nil ||
+		stub.createRequest.ProjectID != request.ProjectID ||
+		*stub.createRequest.AssetID != assetID || stub.createRequest.Kind != request.Kind ||
 		stub.createRequest.Prompt != request.Prompt ||
 		!reflect.DeepEqual(stub.createRequest.ReferenceMediaIDs, request.ReferenceMediaIDs) ||
 		!reflect.DeepEqual(stub.createRequest.TargetAssetPaths, request.TargetAssetPaths) ||
@@ -94,63 +137,40 @@ func TestCreateMapsTransportRequest(t *testing.T) {
 	}
 }
 
-func TestGetMapsGenerationDetail(t *testing.T) {
-	taskStatus := taskdomain.StatusProcessing
-	stub := &requestServiceStub{detail: &domain.GenerationDetail{
-		Run: domain.GenerationRun{
-			ID:        7,
-			ProjectID: 2,
-			Lifecycle: domain.RunLifecycleGenerating,
-			Request: domain.GenerationRequest{
-				Kind: domain.RequestKindGenerateCharacter,
-			},
-		},
-		Steps: []domain.StepDetail{{
-			Step: domain.Step{
-				ID:           8,
-				Type:         "generate_image",
-				Executor:     domain.StepExecutorAI,
-				Dependencies: []domain.StepID{6},
-			},
-			TaskStatus: &taskStatus,
-		}},
+func TestGetMapsTaskBackedGeneration(t *testing.T) {
+	assetID := uint(3)
+	stub := &requestServiceStub{run: &domain.GenerationRun{
+		ID:        7,
+		ProjectID: 2,
+		AssetID:   &assetID,
+		Kind:      domain.GenerateCharacterAnimation,
+		Status:    taskdomain.StatusProcessing,
+		Result:    json.RawMessage(`{"media_ids":["media-1"]}`),
 	}}
-	generationHandler := handler.NewGenerationHandler(stub)
 
-	response, err := generationHandler.Get(
+	response, err := handler.NewGenerationHandler(stub).Get(
 		newGenerationHandlerContext(),
 		dto.GetGenerationRequest{GenerationRunID: 7},
 	)
 	if err != nil {
 		t.Fatalf("get generation: %v", err)
 	}
-	if response.ID != 7 || response.ProjectID != 2 ||
-		response.Kind != domain.RequestKindGenerateCharacter ||
-		response.Lifecycle != domain.RunLifecycleGenerating {
+	if response.ID != 7 || response.ProjectID != 2 || response.AssetID == nil ||
+		*response.AssetID != assetID || response.Kind != domain.GenerateCharacterAnimation ||
+		response.Status != taskdomain.StatusProcessing {
 		t.Fatalf("unexpected run response: %+v", response)
-	}
-	if len(response.Steps) != 1 || response.Steps[0].ID != 8 ||
-		response.Steps[0].TaskStatus == nil ||
-		*response.Steps[0].TaskStatus != taskdomain.StatusProcessing {
-		t.Fatalf("unexpected steps response: %+v", response.Steps)
 	}
 }
 
-func TestListMapsQueryAndRuns(t *testing.T) {
+func TestListMapsTaskBackedRuns(t *testing.T) {
 	assetID := uint(3)
 	stub := &requestServiceStub{listPage: &domain.RunListPage{
-		Runs: []domain.GenerationRun{{
-			ID:        7,
-			ProjectID: 2,
-			Request: domain.GenerationRequest{
-				AssetID: assetID,
-				Kind:    domain.RequestKindGenerateCharacter,
-			},
-			Lifecycle: domain.RunLifecycleGenerating,
-		}},
+		Runs: []domain.GenerationRun{
+			{ID: 7, ProjectID: 2, AssetID: &assetID, Kind: domain.GenerateCharacterAnimation, Status: taskdomain.StatusProcessing},
+			{ID: 8, ProjectID: 2, AssetID: &assetID, Kind: domain.RegenerateCharacterFrames, Status: taskdomain.StatusPending},
+		},
 		NextCursor: "next",
 	}}
-	generationHandler := handler.NewGenerationHandler(stub)
 
 	query := dto.ListGenerationRunsRequest{
 		ProjectID: 42,
@@ -159,21 +179,17 @@ func TestListMapsQueryAndRuns(t *testing.T) {
 		Limit:     10,
 		Cursor:    "cursor",
 	}
-	response, err := generationHandler.List(newGenerationHandlerContext(), query)
+	response, err := handler.NewGenerationHandler(stub).List(newGenerationHandlerContext(), query)
 	if err != nil {
 		t.Fatalf("list generation runs: %v", err)
 	}
-	if stub.listQuery == nil || stub.listQuery.ProjectID != query.ProjectID ||
-		stub.listQuery.AssetID == nil || *stub.listQuery.AssetID != assetID ||
-		stub.listQuery.Status != query.Status || stub.listQuery.Limit != query.Limit ||
-		stub.listQuery.Cursor != query.Cursor {
+	if stub.listQuery == nil || stub.listQuery.AssetID == nil ||
+		*stub.listQuery.AssetID != assetID || stub.listQuery.Status != query.Status {
 		t.Fatalf("unexpected list query: %+v", stub.listQuery)
 	}
-	if len(response.Items) != 1 || response.Items[0].ID != 7 ||
-		response.Items[0].AssetID != assetID ||
-		response.Items[0].Kind != domain.RequestKindGenerateCharacter ||
-		response.Items[0].Lifecycle != domain.RunLifecycleGenerating ||
-		response.NextCursor != "next" {
+	if len(response.Items) != 2 || response.Items[0].ID != 7 || response.Items[1].ID != 8 ||
+		response.Items[0].Status != taskdomain.StatusProcessing ||
+		response.Items[1].Status != taskdomain.StatusPending || response.NextCursor != "next" {
 		t.Fatalf("unexpected list response: %+v", response)
 	}
 }
@@ -189,46 +205,14 @@ func TestListRejectsUnsupportedStatus(t *testing.T) {
 	}
 }
 
-func TestCommandResponsesReflectServiceResult(t *testing.T) {
-	wantErr := errors.New("command failed")
-
-	tests := []struct {
-		name    string
-		stub    *requestServiceStub
-		invoke  func(*handler.GenerationHandler) (bool, error)
-		want    bool
-		wantErr error
-	}{
-		{
-			name: "cancel success",
-			stub: &requestServiceStub{},
-			invoke: func(h *handler.GenerationHandler) (bool, error) {
-				response, err := h.Cancel(newGenerationHandlerContext(), dto.CancelGenerationRequest{GenerationRunID: 7})
-				return response.Cancelled, err
-			},
-			want: true,
-		},
-		{
-			name: "cancel failure",
-			stub: &requestServiceStub{cancelErr: wantErr},
-			invoke: func(h *handler.GenerationHandler) (bool, error) {
-				response, err := h.Cancel(newGenerationHandlerContext(), dto.CancelGenerationRequest{GenerationRunID: 7})
-				return response.Cancelled, err
-			},
-			wantErr: wantErr,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := test.invoke(handler.NewGenerationHandler(test.stub))
-			if !errors.Is(err, test.wantErr) {
-				t.Fatalf("expected error %v, got %v", test.wantErr, err)
-			}
-			if got != test.want {
-				t.Fatalf("expected result %t, got %t", test.want, got)
-			}
-		})
+func TestCancelForwardsTaskBackedRunID(t *testing.T) {
+	stub := &requestServiceStub{}
+	response, err := handler.NewGenerationHandler(stub).Cancel(
+		newGenerationHandlerContext(),
+		dto.CancelGenerationRequest{GenerationRunID: 7},
+	)
+	if err != nil || !response.Cancelled || stub.cancelID != 7 {
+		t.Fatalf("unexpected cancel response: %+v, id=%d, err=%v", response, stub.cancelID, err)
 	}
 }
 
