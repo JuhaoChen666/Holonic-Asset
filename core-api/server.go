@@ -23,11 +23,11 @@ func InitServer() *App {
 	generationService := appservice.NewGenerationService(nil, nil, nil)
 	generationHandler := handler.NewGenerationHandler(generationService)
 
-	mediaService := appservice.NewMediaService()
-	mediaHandler := handler.NewMediaHandler(mediaService)
+	uploadService := appservice.NewUploadService(nil)
+	uploadHandler := handler.NewUploadHandler(uploadService)
 
 	return &App{
-		engine: router.Register(nil, projectHandler, generationHandler, mediaHandler),
+		engine: router.Register(nil, projectHandler, generationHandler, uploadHandler),
 	}
 }
 
