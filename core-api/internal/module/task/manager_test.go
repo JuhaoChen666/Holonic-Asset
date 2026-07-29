@@ -1,0 +1,77 @@
+package task
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+)
+
+type taskStoreStub struct {
+	createdTask *Task
+	status      Status
+	result      json.RawMessage
+}
+
+func (s *taskStoreStub) CreateWithOutbox(_ context.Context, task *Task) (uint, error) {
+	s.createdTask = task
+	return 42, nil
+}
+
+func (*taskStoreStub) GetTaskByID(context.Context, uint) (*Task, error) {
+	return &Task{ID: 42}, nil
+}
+
+func (s *taskStoreStub) UpdateTaskStatus(_ context.Context, _ uint, status Status) error {
+	s.status = status
+	return nil
+}
+
+func (s *taskStoreStub) UpdateTaskResult(_ context.Context, _ uint, result json.RawMessage) error {
+	s.result = result
+	return nil
+}
+
+func (*taskStoreStub) FetchPendingOutbox(context.Context, int) ([]OutboxRecord, error) {
+	return nil, nil
+}
+
+func (*taskStoreStub) MarkOutboxPublished(context.Context, uint, int64) error {
+	return nil
+}
+
+func TestTaskManagerDelegatesLifecycleOperations(t *testing.T) {
+	store := &taskStoreStub{}
+	manager := NewTaskManager(store)
+	message := &Task{Type: "example.v1"}
+	result := json.RawMessage(`{"ok":true}`)
+
+	id, err := manager.Create(context.Background(), message)
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	if id != 42 || store.createdTask != message {
+		t.Fatalf("unexpected create delegation: id=%d task=%p", id, store.createdTask)
+	}
+
+	detail, err := manager.GetDetail(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get task detail: %v", err)
+	}
+	if detail.ID != id {
+		t.Fatalf("unexpected task detail: %+v", detail)
+	}
+
+	if err := manager.UpdateStatus(context.Background(), id, StatusProcessing); err != nil {
+		t.Fatalf("update task status: %v", err)
+	}
+	if store.status != StatusProcessing {
+		t.Fatalf("unexpected status: %v", store.status)
+	}
+
+	if err := manager.UpdateResult(context.Background(), id, result); err != nil {
+		t.Fatalf("update task result: %v", err)
+	}
+	if string(store.result) != string(result) {
+		t.Fatalf("unexpected result: %s", store.result)
+	}
+}

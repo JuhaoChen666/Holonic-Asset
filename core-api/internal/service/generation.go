@@ -4,6 +4,7 @@ import (
 	"context"
 
 	domain "github.com/1024XEngineer/Holonic-Asset/internal/model/generation"
+	taskmodule "github.com/1024XEngineer/Holonic-Asset/internal/module/task"
 	"github.com/1024XEngineer/Holonic-Asset/internal/repository"
 )
 
@@ -37,13 +38,13 @@ type GenerationService interface {
 type generationService struct {
 	reader     repository.Reader
 	unitOfWork UnitOfWork
-	tasks      TaskService
+	tasks      taskmodule.TaskManager
 }
 
 func NewGenerationService(
 	reader repository.Reader,
 	unitOfWork UnitOfWork,
-	tasks TaskService,
+	tasks taskmodule.TaskManager,
 ) GenerationService {
 	return &generationService{
 		reader:     reader,
