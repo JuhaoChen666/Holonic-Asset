@@ -9,6 +9,7 @@ require (
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.40.0
 	github.com/spf13/viper v1.12.0
 	go.uber.org/zap v1.28.0
+	golang.org/x/image v0.39.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/postgres v1.6.0
