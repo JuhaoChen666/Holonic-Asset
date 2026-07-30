@@ -13,12 +13,8 @@ import (
 	"strings"
 
 	"github.com/1024XEngineer/Holonic-Asset/internal/module/processor/image_processor/internal/layout"
+	"github.com/1024XEngineer/Holonic-Asset/internal/module/processor/image_processor/internal/limits"
 	"github.com/1024XEngineer/Holonic-Asset/internal/module/processor/image_processor/internal/transform"
-)
-
-const (
-	maxImageBytes  = 20 << 20
-	maxImagePixels = 40_000_000
 )
 
 // ImageInput identifies an image by its Base64-encoded content.
@@ -80,6 +76,11 @@ const (
 // Processor is a collection of independent image tools operating on Base64-encoded images.
 type Processor struct{}
 
+type preparedImage struct {
+	content []byte
+	config  image.Config
+}
+
 // New returns a Processor ready to apply image operations on Base64-encoded inputs.
 func New() *Processor {
 	return &Processor{}
@@ -111,6 +112,14 @@ func (p *Processor) Resize(
 	height int,
 	filter ResizeFilter,
 ) (ImageOutput, error) {
+	if _, err := limits.PixelCount(
+		"resize output",
+		width,
+		height,
+		limits.MaxOutputPixels,
+	); err != nil {
+		return ImageOutput{}, err
+	}
 	source, err := p.load(input)
 	if err != nil {
 		return ImageOutput{}, err
@@ -206,17 +215,56 @@ func (p *Processor) Concat(
 	direction ConcatDirection,
 	gap int,
 ) (ImageOutput, error) {
-	sources := make([]*image.NRGBA, 0, len(inputs))
+	if err := limits.CheckMaximum(
+		"concat input count",
+		len(inputs),
+		limits.MaxConcatInputs,
+	); err != nil {
+		return ImageOutput{}, err
+	}
+
+	prepared := make([]preparedImage, 0, len(inputs))
+	sizes := make([]image.Point, 0, len(inputs))
+	totalEncodedBytes := 0
 	for index, input := range inputs {
-		source, err := p.load(input)
+		value, err := prepare(input)
+		if err != nil {
+			return ImageOutput{}, fmt.Errorf("prepare image %d: %w", index, err)
+		}
+		totalEncodedBytes, err = limits.CheckedAdd(
+			"concat encoded bytes",
+			totalEncodedBytes,
+			len(value.content),
+		)
+		if err != nil {
+			return ImageOutput{}, err
+		}
+		if err := limits.CheckMaximum(
+			"concat encoded bytes",
+			totalEncodedBytes,
+			limits.MaxConcatEncodedBytes,
+		); err != nil {
+			return ImageOutput{}, err
+		}
+		prepared = append(prepared, value)
+		sizes = append(sizes, image.Pt(value.config.Width, value.config.Height))
+	}
+
+	internalDirection := layout.Horizontal
+	if direction == ConcatVertical {
+		internalDirection = layout.Vertical
+	}
+	if _, _, _, err := layout.Dimensions(sizes, internalDirection, gap); err != nil {
+		return ImageOutput{}, err
+	}
+
+	sources := make([]*image.NRGBA, 0, len(prepared))
+	for index, value := range prepared {
+		source, err := decodePrepared(value)
 		if err != nil {
 			return ImageOutput{}, fmt.Errorf("load image %d: %w", index, err)
 		}
 		sources = append(sources, source)
-	}
-	internalDirection := layout.Horizontal
-	if direction == ConcatVertical {
-		internalDirection = layout.Vertical
 	}
 	result, err := layout.Concat(sources, internalDirection, gap)
 	if err != nil {
@@ -226,31 +274,59 @@ func (p *Processor) Concat(
 }
 
 func (p *Processor) load(input ImageInput) (*image.NRGBA, error) {
-	if strings.TrimSpace(input.Base64) == "" {
-		return nil, fmt.Errorf("base64 image content is required")
-	}
-	content, err := decodeBase64(input.Base64)
+	value, err := prepare(input)
 	if err != nil {
 		return nil, err
 	}
-	if len(content) == 0 {
-		return nil, fmt.Errorf("image content is empty")
+	return decodePrepared(value)
+}
+
+func prepare(input ImageInput) (preparedImage, error) {
+	if strings.TrimSpace(input.Base64) == "" {
+		return preparedImage{}, fmt.Errorf("base64 image content is required")
 	}
-	if len(content) > maxImageBytes {
-		return nil, fmt.Errorf("image exceeds the %d-byte limit", maxImageBytes)
+	content, err := decodeBase64(input.Base64)
+	if err != nil {
+		return preparedImage{}, err
+	}
+	if len(content) == 0 {
+		return preparedImage{}, fmt.Errorf("image content is empty")
+	}
+	if err := limits.CheckMaximum(
+		"image bytes",
+		len(content),
+		limits.MaxImageBytes,
+	); err != nil {
+		return preparedImage{}, err
 	}
 
 	config, _, err := image.DecodeConfig(bytes.NewReader(content))
 	if err != nil {
-		return nil, fmt.Errorf("decode image config: %w", err)
+		return preparedImage{}, fmt.Errorf("decode image config: %w", err)
 	}
-	if config.Width <= 0 || config.Height <= 0 ||
-		int64(config.Width)*int64(config.Height) > maxImagePixels {
-		return nil, fmt.Errorf("image dimensions exceed the supported limit")
+	if _, err := limits.PixelCount(
+		"image",
+		config.Width,
+		config.Height,
+		limits.MaxImagePixels,
+	); err != nil {
+		return preparedImage{}, err
 	}
-	decoded, _, err := image.Decode(bytes.NewReader(content))
+	return preparedImage{content: content, config: config}, nil
+}
+
+func decodePrepared(value preparedImage) (*image.NRGBA, error) {
+	decoded, _, err := image.Decode(bytes.NewReader(value.content))
 	if err != nil {
 		return nil, fmt.Errorf("decode image: %w", err)
+	}
+	if _, err := limits.PixelCount(
+		"decoded image",
+		decoded.Bounds().Dx(),
+		decoded.Bounds().Dy(),
+		limits.MaxImagePixels,
+	); err != nil {
+		return nil, err
 	}
 	return toNRGBA(decoded), nil
 }
@@ -264,8 +340,12 @@ func decodeBase64(value string) ([]byte, error) {
 		}
 		value = value[comma+1:]
 	}
-	if len(value) > maxImageBytes*2 {
-		return nil, fmt.Errorf("base64 image exceeds the supported limit")
+	if err := limits.CheckMaximum(
+		"base64 image bytes",
+		len(value),
+		limits.MaxBase64Bytes,
+	); err != nil {
+		return nil, err
 	}
 	content, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {
@@ -278,7 +358,18 @@ func decodeBase64(value string) ([]byte, error) {
 }
 
 func encodeOutput(value *image.NRGBA) (ImageOutput, error) {
-	var content bytes.Buffer
+	if value == nil {
+		return ImageOutput{}, fmt.Errorf("image output is required")
+	}
+	if _, err := limits.PixelCount(
+		"image output",
+		value.Bounds().Dx(),
+		value.Bounds().Dy(),
+		limits.MaxOutputPixels,
+	); err != nil {
+		return ImageOutput{}, err
+	}
+	content := limitedBuffer{maximum: limits.MaxOutputBytes}
 	if err := png.Encode(&content, value); err != nil {
 		return ImageOutput{}, fmt.Errorf("encode PNG: %w", err)
 	}
@@ -288,6 +379,22 @@ func encodeOutput(value *image.NRGBA) (ImageOutput, error) {
 		Width:     value.Bounds().Dx(),
 		Height:    value.Bounds().Dy(),
 	}, nil
+}
+
+type limitedBuffer struct {
+	bytes.Buffer
+	maximum int
+}
+
+func (buffer *limitedBuffer) Write(value []byte) (int, error) {
+	if len(value) > buffer.maximum-buffer.Len() {
+		return 0, fmt.Errorf(
+			"%w: encoded PNG exceeds the %d-byte limit",
+			limits.ErrResourceLimit,
+			buffer.maximum,
+		)
+	}
+	return buffer.Buffer.Write(value)
 }
 
 func toNRGBA(source image.Image) *image.NRGBA {

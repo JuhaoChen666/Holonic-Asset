@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"image"
 	"image/draw"
+
+	"github.com/1024XEngineer/Holonic-Asset/internal/module/processor/image_processor/internal/limits"
 )
 
 type Direction uint8
@@ -14,14 +16,18 @@ const (
 )
 
 func Concat(sources []*image.NRGBA, direction Direction, gap int) (*image.NRGBA, error) {
-	if len(sources) == 0 {
-		return nil, fmt.Errorf("at least one image is required")
-	}
-	if gap < 0 {
-		return nil, fmt.Errorf("gap cannot be negative")
+	sizes := make([]image.Point, 0, len(sources))
+	for index, source := range sources {
+		if source == nil {
+			return nil, fmt.Errorf("image %d is required", index)
+		}
+		sizes = append(sizes, source.Bounds().Size())
 	}
 
-	width, height := dimensions(sources, direction, gap)
+	width, height, _, err := Dimensions(sizes, direction, gap)
+	if err != nil {
+		return nil, err
+	}
 	result := image.NewNRGBA(image.Rect(0, 0, width, height))
 	offset := 0
 	for _, source := range sources {
@@ -45,21 +51,89 @@ func Concat(sources []*image.NRGBA, direction Direction, gap int) (*image.NRGBA,
 	return result, nil
 }
 
-func dimensions(sources []*image.NRGBA, direction Direction, gap int) (int, int) {
-	width, height := 0, 0
-	for _, source := range sources {
+// Dimensions preflights a Concat canvas before decoded images are allocated.
+func Dimensions(sizes []image.Point, direction Direction, gap int) (int, int, int, error) {
+	if len(sizes) == 0 {
+		return 0, 0, 0, fmt.Errorf("at least one image is required")
+	}
+	if err := limits.CheckMaximum(
+		"concat input count",
+		len(sizes),
+		limits.MaxConcatInputs,
+	); err != nil {
+		return 0, 0, 0, err
+	}
+	if gap < 0 {
+		return 0, 0, 0, fmt.Errorf("gap cannot be negative")
+	}
+
+	width, height, sourcePixels := 0, 0, 0
+	for index, size := range sizes {
+		pixels, err := limits.PixelCount(
+			fmt.Sprintf("concat image %d", index),
+			size.X,
+			size.Y,
+			limits.MaxImagePixels,
+		)
+		if err != nil {
+			return 0, 0, 0, err
+		}
+		sourcePixels, err = limits.CheckedAdd(
+			"concat source pixels",
+			sourcePixels,
+			pixels,
+		)
+		if err != nil {
+			return 0, 0, 0, err
+		}
 		if direction == Horizontal {
-			width += source.Bounds().Dx()
-			height = max(height, source.Bounds().Dy())
+			width, err = limits.CheckedAdd("concat width", width, size.X)
+			height = max(height, size.Y)
 		} else {
-			width = max(width, source.Bounds().Dx())
-			height += source.Bounds().Dy()
+			width = max(width, size.X)
+			height, err = limits.CheckedAdd("concat height", height, size.Y)
+		}
+		if err != nil {
+			return 0, 0, 0, err
 		}
 	}
-	if direction == Horizontal {
-		width += gap * (len(sources) - 1)
-	} else {
-		height += gap * (len(sources) - 1)
+
+	totalGap, err := limits.CheckedMultiply("concat gap", gap, len(sizes)-1)
+	if err != nil {
+		return 0, 0, 0, err
 	}
-	return width, height
+	if direction == Horizontal {
+		width, err = limits.CheckedAdd("concat width", width, totalGap)
+	} else {
+		height, err = limits.CheckedAdd("concat height", height, totalGap)
+	}
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	outputPixels, err := limits.PixelCount(
+		"concat output",
+		width,
+		height,
+		limits.MaxOutputPixels,
+	)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	workingPixels, err := limits.CheckedAdd(
+		"concat working pixels",
+		sourcePixels,
+		outputPixels,
+	)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	if err := limits.CheckMaximum(
+		"concat working pixels",
+		workingPixels,
+		limits.MaxWorkingPixels,
+	); err != nil {
+		return 0, 0, 0, err
+	}
+	return width, height, sourcePixels, nil
 }
