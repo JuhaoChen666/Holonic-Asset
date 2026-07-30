@@ -28,8 +28,8 @@ func NewApp(projectDao dao.ProjectDao) *App {
 	generatorEngine := generator.NewEngine(nil, nil, nil)
 	generationHandler := handler.NewGenerationHandler(generatorEngine)
 
-	uploader := upload.NewUploader(nil)
-	uploadHandler := handler.NewUploadHandler(uploader)
+	uploadManager := upload.NewManager(nil)
+	uploadHandler := handler.NewUploadHandler(uploadManager)
 
 	return &App{
 		engine: router.Register(nil, projectHandler, generationHandler, uploadHandler),
