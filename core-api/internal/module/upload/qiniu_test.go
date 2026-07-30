@@ -1,4 +1,4 @@
-package repository_test
+package upload_test
 
 import (
 	"context"
@@ -6,11 +6,10 @@ import (
 
 	"github.com/1024XEngineer/Holonic-Asset/internal/config"
 	"github.com/1024XEngineer/Holonic-Asset/internal/module/upload"
-	"github.com/1024XEngineer/Holonic-Asset/internal/repository"
 )
 
 func TestQiniuStorageReturnsPlaceholderValues(t *testing.T) {
-	store, err := repository.NewQiniuStorage(config.QiniuConfig{})
+	store, err := upload.NewQiniuStorage(config.QiniuConfig{})
 	if err != nil {
 		t.Fatalf("create object store: %v", err)
 	}
