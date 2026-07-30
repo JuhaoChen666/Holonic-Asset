@@ -5,11 +5,11 @@ import (
 
 	"github.com/1024XEngineer/Holonic-Asset/internal/handler"
 	"github.com/1024XEngineer/Holonic-Asset/internal/module/generator"
+	"github.com/1024XEngineer/Holonic-Asset/internal/module/upload"
 	"github.com/1024XEngineer/Holonic-Asset/internal/module/workspace"
 	"github.com/1024XEngineer/Holonic-Asset/internal/repository"
 	"github.com/1024XEngineer/Holonic-Asset/internal/repository/dao"
 	"github.com/1024XEngineer/Holonic-Asset/internal/router"
-	appservice "github.com/1024XEngineer/Holonic-Asset/internal/service"
 )
 
 type App struct {
@@ -25,8 +25,8 @@ func InitServer() *App {
 	generatorEngine := generator.NewEngine(nil, nil, nil, nil)
 	generationHandler := handler.NewGenerationHandler(generatorEngine)
 
-	uploadService := appservice.NewUploadService(nil)
-	uploadHandler := handler.NewUploadHandler(uploadService)
+	uploader := upload.NewUploader(nil)
+	uploadHandler := handler.NewUploadHandler(uploader)
 
 	return &App{
 		engine: router.Register(nil, projectHandler, generationHandler, uploadHandler),
