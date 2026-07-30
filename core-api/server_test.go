@@ -1,9 +1,17 @@
 package main
 
-import "testing"
+import (
+	"testing"
 
-func TestInitServerBuildsApplication(t *testing.T) {
-	app := InitServer()
+	"github.com/1024XEngineer/Holonic-Asset/internal/repository/dao"
+)
+
+type projectDaoStub struct {
+	dao.ProjectDao
+}
+
+func TestNewAppBuildsApplication(t *testing.T) {
+	app := NewApp(&projectDaoStub{})
 	if app == nil {
 		t.Fatal("expected server application")
 	}

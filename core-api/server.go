@@ -17,7 +17,10 @@ type App struct {
 }
 
 func InitServer() *App {
-	projectDao := dao.NewMemoryProjectDao()
+	return NewApp(dao.NewGormProjectDao(nil))
+}
+
+func NewApp(projectDao dao.ProjectDao) *App {
 	projectRepository := repository.NewProjectRepository(projectDao)
 	workspaceModule := workspace.New(projectRepository, nil)
 	projectHandler := handler.NewProjectHandler(workspaceModule.Projects)
