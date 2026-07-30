@@ -69,11 +69,9 @@ func (s *imageGenerationService) Generate(
 	}
 
 	return &GenerateResult{
-		Images:    images,
-		Model:     providerResult.Model,
-		Size:      providerResult.Size,
-		CreatedAt: providerResult.CreatedAt,
-		Usage:     providerResult.Usage,
+		Images: images,
+		Size:   providerResult.Size,
+		Usage:  providerResult.Usage,
 	}, nil
 }
 

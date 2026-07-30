@@ -176,9 +176,7 @@ func (p *QNAProvider) call(
 	return &ProviderResult{
 		Images:       images,
 		OutputFormat: decoded.OutputFormat,
-		Model:        model,
 		Size:         decoded.Size,
-		CreatedAt:    decoded.Created,
 		Usage: Usage{
 			TotalTokens:       decoded.Usage.TotalTokens,
 			InputTokens:       decoded.Usage.InputTokens,
