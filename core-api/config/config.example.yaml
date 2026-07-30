@@ -18,6 +18,6 @@ log:
   compress: true
 
 qna:
-  baseURL: "https://api.qnaigc.com"
+  baseURL: "https://example.com"
   apiKey: ""
   defaultModel: "openai/gpt-image-2"

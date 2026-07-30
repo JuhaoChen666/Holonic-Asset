@@ -15,9 +15,7 @@ type ProviderRequest struct {
 type ProviderResult struct {
 	Images       []string
 	OutputFormat string
-	Model        string
 	Size         string
-	CreatedAt    int64
 	Usage        Usage
 }
 
