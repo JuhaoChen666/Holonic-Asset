@@ -21,14 +21,37 @@ import (
 	"github.com/1024XEngineer/Holonic-Asset/internal/router"
 )
 
+const defaultConfigPath = "internal/config/config.example.yaml"
+const configPathEnv = "HOLONIC_ASSET_CONFIG"
+
 type App struct {
 	engine *echo.Echo
 	tasks  task.Manager
 	db     *gorm.DB
 }
 
-func InitServer() *App {
-	projectDao := dao.NewMemoryProjectDao()
+func InitServer() (*App, error) {
+	var cfg config.Config
+	if err := viperx.LoadConfig(resolveConfigPath(), &cfg); err != nil {
+		return nil, fmt.Errorf("app: load config: %w", err)
+	}
+
+	db, err := InitDB(context.Background(), &cfg.DB, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewApp(dao.NewGormProjectDao(db)), nil
+}
+
+func resolveConfigPath() string {
+	if path := os.Getenv(configPathEnv); path != "" {
+		return path
+	}
+	return defaultConfigPath
+}
+
+func NewApp(projectDao dao.ProjectDao) *App {
 	projectRepository := repository.NewProjectRepository(projectDao)
 	workspaceModule := workspace.New(projectRepository, nil)
 	projectHandler := handler.NewProjectHandler(workspaceModule.Projects)
@@ -36,8 +59,8 @@ func InitServer() *App {
 	generatorEngine := generator.NewEngine(nil, nil, nil)
 	generationHandler := handler.NewGenerationHandler(generatorEngine)
 
-	uploader := upload.NewUploader(nil)
-	uploadHandler := handler.NewUploadHandler(uploader)
+	uploadManager := upload.NewManager(nil)
+	uploadHandler := handler.NewUploadHandler(uploadManager)
 
 	return &App{
 		engine: router.Register(nil, projectHandler, generationHandler, uploadHandler),
