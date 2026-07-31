@@ -94,7 +94,7 @@ func TestCreateBuildsOneTaskFromRequest(t *testing.T) {
 	request := &generator.Request{
 		ProjectID:         42,
 		AssetID:           &assetID,
-		Kind:              generator.GenerateCharacterAnimation,
+		Kind:              generator.GenerateAnimation,
 		Prompt:            "walk",
 		ReferenceMediaIDs: []string{"media-1"},
 		Parameters:        json.RawMessage(`{"asset_name":"hero walk"}`),
@@ -107,12 +107,12 @@ func TestCreateBuildsOneTaskFromRequest(t *testing.T) {
 	if runID != 17 || tasks.createdTask == nil {
 		t.Fatalf("unexpected task creation: run=%d task=%+v", runID, tasks.createdTask)
 	}
-	if tasks.createdTask.Type != string(request.Kind) ||
+	if tasks.createdTask.Type != string(generator.GenerateAnimation) ||
 		tasks.createdTask.Status != taskdomain.StatusPending {
 		t.Fatalf("unexpected task envelope: %+v", tasks.createdTask)
 	}
 
-	var payload generator.CreateCharacterAnimationPayload
+	var payload generator.CreateAnimationPayload
 	if err := json.Unmarshal(tasks.createdTask.Payload, &payload); err != nil {
 		t.Fatalf("decode task payload: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestCreateBuildsCharacterPrototypePayload(t *testing.T) {
 
 func TestGetProjectsTaskAsRun(t *testing.T) {
 	assetID := uint(9)
-	payload, err := json.Marshal(generator.CreateCharacterAnimationPayload{
+	payload, err := json.Marshal(generator.CreateAnimationPayload{
 		ProjectID: 42,
 		ParentID:  assetID,
 	})
@@ -162,7 +162,7 @@ func TestGetProjectsTaskAsRun(t *testing.T) {
 	}
 	tasks := &taskManagerStub{detail: &taskdomain.Task{
 		ID:      17,
-		Type:    string(generator.GenerateCharacterAnimation),
+		Type:    string(generator.GenerateAnimation),
 		Status:  taskdomain.StatusProcessing,
 		Payload: payload,
 		Result:  json.RawMessage(`{"asset_id":9}`),
@@ -174,7 +174,7 @@ func TestGetProjectsTaskAsRun(t *testing.T) {
 		t.Fatalf("get generation: %v", err)
 	}
 	if run.ID != 17 || run.ProjectID != 42 || run.AssetID == nil || *run.AssetID != assetID ||
-		run.Kind != generator.GenerateCharacterAnimation || run.Status != taskdomain.StatusProcessing {
+		run.Kind != generator.GenerateAnimation || run.Status != taskdomain.StatusProcessing {
 		t.Fatalf("unexpected generation run: %+v", run)
 	}
 }
@@ -270,45 +270,46 @@ func (s *executorStub) Generate(
 
 func TestRegisteredGeneratorTaskHandlersDecodeTheirPayloads(t *testing.T) {
 	tests := []struct {
-		taskType generator.TaskType
-		payload  json.RawMessage
+		dispatchType generator.TaskType
+		expectedType generator.TaskType
+		payload      json.RawMessage
 	}{
 		{
-			taskType: generator.GenerateCharacterProtoType,
-			payload:  json.RawMessage(`{"asset_name":"hero","creative_brief":"pixel knight","canvas_size":"64x64","perspective":"top_down","direction_count":"4","reference":"media-1","project_id":11}`),
+			dispatchType: generator.GenerateCharacterProtoType,
+			expectedType: generator.GenerateCharacterProtoType,
+			payload:      json.RawMessage(`{"asset_name":"hero","creative_brief":"pixel knight","canvas_size":"64x64","perspective":"top_down","direction_count":"4","reference":"media-1","project_id":11}`),
 		},
 		{
-			taskType: generator.GenerateCharacterAnimation,
-			payload:  json.RawMessage(`{"asset_name":"walk","project_id":11,"parent_id":7,"creative_brief":"walking cycle"}`),
+			dispatchType: generator.GenerateAnimation,
+			expectedType: generator.GenerateAnimation,
+			payload:      json.RawMessage(`{"asset_name":"walk","project_id":11,"parent_id":7,"creative_brief":"walking cycle"}`),
 		},
 		{
-			taskType: generator.GenerateObjectProtoType,
-			payload:  json.RawMessage(`{"asset_name":"chest","creative_brief":"wooden chest","canvas_size":"64x64","perspective":"top_down","reference":"media-2","project_id":11}`),
+			dispatchType: generator.GenerateObjectProtoType,
+			expectedType: generator.GenerateObjectProtoType,
+			payload:      json.RawMessage(`{"asset_name":"chest","creative_brief":"wooden chest","canvas_size":"64x64","perspective":"top_down","reference":"media-2","project_id":11}`),
 		},
 		{
-			taskType: generator.GenerateObjectAnimation,
-			payload:  json.RawMessage(`{"asset_name":"open chest","project_id":11,"parent_id":8,"creative_brief":"opening animation"}`),
-		},
-		{
-			taskType: generator.GenerateTileSet,
-			payload:  json.RawMessage(`{"asset_name":"forest","project_id":11,"creative_brief":"forest ground","tile_num":2,"tile_descriptions":["grass","path"],"reference":"media-3"}`),
+			dispatchType: generator.GenerateTileSet,
+			expectedType: generator.GenerateTileSet,
+			payload:      json.RawMessage(`{"asset_name":"forest","project_id":11,"creative_brief":"forest ground","tile_num":2,"tile_descriptions":["grass","path"],"reference":"media-3"}`),
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(string(tt.taskType), func(t *testing.T) {
+		t.Run(string(tt.dispatchType), func(t *testing.T) {
 			tasks := &taskManagerStub{}
 			executor := &executorStub{result: json.RawMessage(`{"asset_id":7}`)}
 			generator.NewEngine(tasks, nil, executor)
 
-			message := &taskdomain.Task{ID: 17, Type: string(tt.taskType), Payload: tt.payload}
+			message := &taskdomain.Task{ID: 17, Type: string(tt.dispatchType), Payload: tt.payload}
 			result, err := tasks.dispatch(context.Background(), message)
 			if err != nil {
 				t.Fatalf("dispatch generation task: %v", err)
 			}
-			shouldExecute := tt.taskType != generator.GenerateTileSet
+			shouldExecute := tt.dispatchType != generator.GenerateTileSet
 			if shouldExecute {
-				if executor.calls != 1 || executor.taskType != tt.taskType ||
+				if executor.calls != 1 || executor.taskType != tt.expectedType ||
 					!reflect.DeepEqual(executor.payload, tt.payload) ||
 					!reflect.DeepEqual(result, executor.result) {
 					t.Fatalf("unexpected executor call: calls=%d type=%s payload=%s result=%s",
@@ -358,8 +359,8 @@ func TestNewEngineRegistersAllTaskTypes(t *testing.T) {
 			t.Fatalf("dispatch task type %q: %v", taskType, err)
 		}
 	}
-	if executor.calls != 4 || len(tasks.statusUpdates) != 0 {
-		t.Fatalf("expected four implemented handler calls: calls=%d statuses=%+v",
+	if executor.calls != 3 || len(tasks.statusUpdates) != 0 {
+		t.Fatalf("expected three implemented handler calls: calls=%d statuses=%+v",
 			executor.calls, tasks.statusUpdates)
 	}
 }
@@ -394,7 +395,7 @@ func TestImplementedHandlerRequiresExecutor(t *testing.T) {
 
 	_, err := tasks.dispatch(context.Background(), &taskdomain.Task{
 		ID:      17,
-		Type:    string(generator.GenerateObjectAnimation),
+		Type:    string(generator.GenerateAnimation),
 		Payload: json.RawMessage(`{"asset_name":"open","parent_id":8}`),
 	})
 	if !errors.Is(err, generator.ErrExecutorRequired) {

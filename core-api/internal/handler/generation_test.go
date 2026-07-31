@@ -64,7 +64,7 @@ func TestCreateMapsTransportRequest(t *testing.T) {
 	request := dto.CreateGenerationRequest{
 		ProjectID:         2,
 		AssetID:           &assetID,
-		Kind:              generator.GenerateCharacterAnimation,
+		Kind:              generator.GenerateAnimation,
 		Prompt:            "hero",
 		ReferenceMediaIDs: []string{"media-1"},
 		TargetAssetPaths:  []string{"animations.walk.frames"},
@@ -95,7 +95,7 @@ func TestGetMapsTaskBackedGeneration(t *testing.T) {
 		ID:        7,
 		ProjectID: 2,
 		AssetID:   &assetID,
-		Kind:      generator.GenerateCharacterAnimation,
+		Kind:      generator.GenerateAnimation,
 		Status:    taskdomain.StatusProcessing,
 		Result:    json.RawMessage(`{"media_ids":["media-1"]}`),
 	}}
@@ -108,7 +108,7 @@ func TestGetMapsTaskBackedGeneration(t *testing.T) {
 		t.Fatalf("get generation: %v", err)
 	}
 	if response.ID != 7 || response.ProjectID != 2 || response.AssetID == nil ||
-		*response.AssetID != assetID || response.Kind != generator.GenerateCharacterAnimation ||
+		*response.AssetID != assetID || response.Kind != generator.GenerateAnimation ||
 		response.Status != taskdomain.StatusProcessing {
 		t.Fatalf("unexpected run response: %+v", response)
 	}
@@ -118,8 +118,8 @@ func TestListMapsTaskBackedRuns(t *testing.T) {
 	assetID := uint(3)
 	stub := &runManagerStub{listPage: &generator.RunListPage{
 		Runs: []generator.Run{
-			{ID: 7, ProjectID: 2, AssetID: &assetID, Kind: generator.GenerateCharacterAnimation, Status: taskdomain.StatusProcessing},
-			{ID: 8, ProjectID: 2, AssetID: &assetID, Kind: generator.RegenerateCharacterFrames, Status: taskdomain.StatusPending},
+			{ID: 7, ProjectID: 2, AssetID: &assetID, Kind: generator.GenerateAnimation, Status: taskdomain.StatusProcessing},
+			{ID: 8, ProjectID: 2, AssetID: &assetID, Kind: generator.RegenerateFrames, Status: taskdomain.StatusPending},
 		},
 		NextCursor: "next",
 	}}

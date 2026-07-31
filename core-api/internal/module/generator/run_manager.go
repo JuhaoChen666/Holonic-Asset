@@ -30,7 +30,6 @@ func (e *Engine) Create(ctx context.Context, request *Request) (RunID, error) {
 	if err != nil {
 		return 0, err
 	}
-
 	payload, err := json.Marshal(payloadValue)
 	if err != nil {
 		return 0, err
@@ -59,8 +58,8 @@ func buildTaskPayload(request *Request) (any, error) {
 		payload.CreativeBrief = valueOrFallback(payload.CreativeBrief, request.Prompt)
 		payload.Reference = valueOrFallback(payload.Reference, firstReference(request.ReferenceMediaIDs))
 		return payload, nil
-	case GenerateCharacterAnimation:
-		payload := CreateCharacterAnimationPayload{}
+	case GenerateAnimation:
+		payload := CreateAnimationPayload{}
 		if err := decodeParameters(request, &payload); err != nil {
 			return nil, err
 		}
@@ -79,17 +78,6 @@ func buildTaskPayload(request *Request) (any, error) {
 		payload.CreativeBrief = valueOrFallback(payload.CreativeBrief, request.Prompt)
 		payload.Reference = valueOrFallback(payload.Reference, firstReference(request.ReferenceMediaIDs))
 		return payload, nil
-	case GenerateObjectAnimation:
-		payload := CreateObjectAnimationPayload{}
-		if err := decodeParameters(request, &payload); err != nil {
-			return nil, err
-		}
-		payload.ProjectID = request.ProjectID
-		payload.CreativeBrief = valueOrFallback(payload.CreativeBrief, request.Prompt)
-		if payload.ParentID == 0 && request.AssetID != nil {
-			payload.ParentID = *request.AssetID
-		}
-		return payload, nil
 	case GenerateTileSet:
 		payload := CreateTileSetPayload{}
 		if err := decodeParameters(request, &payload); err != nil {
@@ -103,11 +91,9 @@ func buildTaskPayload(request *Request) (any, error) {
 		}
 		return payload, nil
 	case RegenerateCharacterProtoType,
-		RegenerateCharacterAnimation,
-		RegenerateCharacterFrames,
+		RegenerateAnimation,
+		RegenerateFrames,
 		RegenerateObjectProtoType,
-		RegenerateObjectAnimation,
-		RegenerateObjectFrames,
 		RegenerateItem,
 		RegenerateTiles:
 		return struct{}{}, nil
