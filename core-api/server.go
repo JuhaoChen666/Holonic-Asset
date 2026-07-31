@@ -1,11 +1,20 @@
 package main
 
 import (
-	"github.com/labstack/echo/v4"
+	"context"
+	"fmt"
+	"os"
 
+	"github.com/labstack/echo/v4"
+	"gorm.io/gorm"
+
+	"github.com/1024XEngineer/Holonic-Asset/internal/config"
 	"github.com/1024XEngineer/Holonic-Asset/internal/handler"
 	"github.com/1024XEngineer/Holonic-Asset/internal/module/generator"
+	"github.com/1024XEngineer/Holonic-Asset/internal/module/generator/imageclient"
+	"github.com/1024XEngineer/Holonic-Asset/internal/module/task"
 	"github.com/1024XEngineer/Holonic-Asset/internal/module/upload"
+	"github.com/1024XEngineer/Holonic-Asset/internal/module/viperx"
 	"github.com/1024XEngineer/Holonic-Asset/internal/module/workspace"
 	"github.com/1024XEngineer/Holonic-Asset/internal/repository"
 	"github.com/1024XEngineer/Holonic-Asset/internal/repository/dao"
@@ -14,6 +23,8 @@ import (
 
 type App struct {
 	engine *echo.Echo
+	tasks  task.Manager
+	db     *gorm.DB
 }
 
 func InitServer() *App {
@@ -33,6 +44,85 @@ func InitServer() *App {
 	}
 }
 
+func InitServerFromConfig(ctx context.Context, cfg config.Config) (*App, error) {
+	db, err := InitDB(ctx, &cfg.DB, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	assetRepository := repository.NewAssetRepositoryWithDB(
+		db,
+		&dao.AssetDaoImpl{DB: db},
+		&dao.AssetContentDaoImpl{DB: db},
+		&dao.AssetRecordDaoImpl{DB: db},
+	)
+	projectRepository := repository.NewProjectRepository(dao.NewMemoryProjectDao())
+	workspaceModule := workspace.New(projectRepository, assetRepository)
+
+	taskRepository := repository.NewTaskRepository(db)
+	taskManager, err := InitTask(ctx, cfg.Queue, taskRepository)
+	if err != nil {
+		closeDatabase(db)
+		return nil, err
+	}
+
+	provider := imageclient.NewQNAProvider(imageclient.QNAConfig{
+		BaseURL:      cfg.QNA.BaseURL,
+		APIKey:       cfg.QNA.APIKey,
+		DefaultModel: cfg.QNA.DefaultModel,
+	})
+	images := imageclient.NewImageGenerationService(provider)
+	executor := generator.NewExecutor(images, workspaceModule.Assets)
+	generatorEngine := generator.NewEngine(taskManager, nil, executor)
+
+	assetHandler := handler.NewHandler(workspaceModule.Assets)
+	projectHandler := handler.NewProjectHandler(workspaceModule.Projects)
+	generationHandler := handler.NewGenerationHandler(generatorEngine)
+	uploader := upload.NewUploader(nil)
+	uploadHandler := handler.NewUploadHandler(uploader)
+
+	return &App{
+		engine: router.Register(assetHandler, projectHandler, generationHandler, uploadHandler),
+		tasks:  taskManager,
+		db:     db,
+	}, nil
+}
+
+func LoadAppConfig() (config.Config, error) {
+	path := os.Getenv("CONFIG_PATH")
+	if path == "" {
+		path = "config.yaml"
+	}
+
+	var cfg config.Config
+	if err := viperx.LoadConfig(path, &cfg); err != nil {
+		return config.Config{}, fmt.Errorf("app: load config: %w", err)
+	}
+	return cfg, nil
+}
+
 func (a *App) Start(address string) error {
+	if a.tasks != nil {
+		if err := a.tasks.Start(context.Background()); err != nil {
+			return err
+		}
+	}
 	return a.engine.Start(address)
+}
+
+func (a *App) Stop() error {
+	if a.tasks != nil {
+		return a.tasks.Stop()
+	}
+	return nil
+}
+
+func closeDatabase(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	sqlDB, err := db.DB()
+	if err == nil {
+		_ = sqlDB.Close()
+	}
 }
