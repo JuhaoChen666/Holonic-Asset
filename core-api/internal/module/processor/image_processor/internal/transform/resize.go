@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/draw"
+	"math"
 
 	xdraw "golang.org/x/image/draw"
 )
@@ -15,12 +16,12 @@ const (
 	PixelArt
 )
 
-type ResizeAnchor uint8
-
-const (
-	AnchorCenter ResizeAnchor = iota
-	AnchorBottomCenter
-)
+type Insets struct {
+	Top    int
+	Right  int
+	Bottom int
+	Left   int
+}
 
 func Resize(
 	source *image.NRGBA,
@@ -45,40 +46,63 @@ func ResizeContain(
 	width int,
 	height int,
 	filter ResizeFilter,
-	anchor ResizeAnchor,
-) (*image.NRGBA, error) {
+	padding Insets,
+	anchorX float64,
+	anchorY float64,
+	allowUpscale bool,
+) (*image.NRGBA, image.Rectangle, error) {
 	if width <= 0 || height <= 0 {
-		return nil, fmt.Errorf("resize dimensions must be positive")
+		return nil, image.Rectangle{}, fmt.Errorf("resize dimensions must be positive")
 	}
 	if source == nil || source.Bounds().Empty() {
-		return nil, fmt.Errorf("resize source must not be empty")
+		return nil, image.Rectangle{}, fmt.Errorf("resize source must not be empty")
 	}
 	scaler, err := scalerFor(filter)
 	if err != nil {
-		return nil, err
+		return nil, image.Rectangle{}, err
 	}
-	if anchor != AnchorCenter && anchor != AnchorBottomCenter {
-		return nil, fmt.Errorf("unsupported resize anchor: %d", anchor)
+	if padding.Top < 0 || padding.Right < 0 ||
+		padding.Bottom < 0 || padding.Left < 0 {
+		return nil, image.Rectangle{}, fmt.Errorf("resize padding cannot be negative")
+	}
+	availableWidth := width - padding.Left - padding.Right
+	availableHeight := height - padding.Top - padding.Bottom
+	if availableWidth <= 0 || availableHeight <= 0 {
+		return nil, image.Rectangle{}, fmt.Errorf(
+			"resize padding must leave a positive content area",
+		)
+	}
+	if math.IsNaN(anchorX) || math.IsNaN(anchorY) ||
+		math.IsInf(anchorX, 0) || math.IsInf(anchorY, 0) ||
+		anchorX < 0 || anchorX > 1 || anchorY < 0 || anchorY > 1 {
+		return nil, image.Rectangle{}, fmt.Errorf(
+			"resize anchor coordinates must be finite numbers between 0 and 1",
+		)
 	}
 
 	sourceWidth := source.Bounds().Dx()
 	sourceHeight := source.Bounds().Dy()
-	scaledWidth, scaledHeight := containDimensions(
-		sourceWidth,
-		sourceHeight,
-		width,
-		height,
-	)
-	x := (width - scaledWidth) / 2
-	y := (height - scaledHeight) / 2
-	if anchor == AnchorBottomCenter {
-		y = height - scaledHeight
+	scaledWidth, scaledHeight := sourceWidth, sourceHeight
+	if allowUpscale ||
+		sourceWidth > availableWidth ||
+		sourceHeight > availableHeight {
+		scaledWidth, scaledHeight = containDimensions(
+			sourceWidth,
+			sourceHeight,
+			availableWidth,
+			availableHeight,
+		)
 	}
+	freeX := availableWidth - scaledWidth
+	freeY := availableHeight - scaledHeight
+	x := padding.Left + int(math.Floor(float64(freeX)*anchorX))
+	y := padding.Top + int(math.Floor(float64(freeY)*anchorY))
 
 	result := image.NewNRGBA(image.Rect(0, 0, width, height))
 	destination := image.Rect(x, y, x+scaledWidth, y+scaledHeight)
 	scaler.Scale(result, destination, source, source.Bounds(), draw.Src, nil)
-	return result, nil
+	scrubTransparentRGB(result)
+	return result, destination, nil
 }
 
 func containDimensions(

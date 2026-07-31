@@ -10,15 +10,13 @@ import (
 const (
 	// MaxImageBytes limits one compressed input image.
 	MaxImageBytes = 20 << 20
-	// MaxBase64Bytes bounds the textual representation before decoding.
-	MaxBase64Bytes = MaxImageBytes * 2
 	// MaxImagePixels limits one decoded input image.
 	MaxImagePixels = 40_000_000
 	// MaxOutputPixels limits one processed output canvas.
 	MaxOutputPixels = 40_000_000
 	// MaxWorkingPixels limits simultaneously resident decoded source and output pixels.
 	MaxWorkingPixels = MaxImagePixels + MaxOutputPixels
-	// MaxOutputBytes limits the encoded PNG held before Base64 conversion.
+	// MaxOutputBytes limits the encoded PNG held in memory.
 	MaxOutputBytes = 20 << 20
 	// MaxConcatInputs limits fan-in work and per-input bookkeeping.
 	MaxConcatInputs = 256

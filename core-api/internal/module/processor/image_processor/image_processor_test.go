@@ -2,7 +2,6 @@ package imageprocessor
 
 import (
 	"bytes"
-	"encoding/base64"
 	"image"
 	"image/color"
 	"image/png"
@@ -14,7 +13,7 @@ import (
 func TestCropRejectsNegativeDimensionsBeforeDecoding(t *testing.T) {
 	t.Parallel()
 
-	_, err := New().Crop(ImageInput{}, Rect{X: 8, Y: 0, Width: -3, Height: 1})
+	_, err := New().Crop(nil, Rect{X: 8, Y: 0, Width: -3, Height: 1})
 	if err == nil || !strings.Contains(err.Error(), "dimensions must be positive") {
 		t.Fatalf("Crop() error = %v, want positive-dimensions error", err)
 	}
@@ -23,7 +22,7 @@ func TestCropRejectsNegativeDimensionsBeforeDecoding(t *testing.T) {
 func TestResizeRejectsUnknownFilterBeforeDecoding(t *testing.T) {
 	t.Parallel()
 
-	_, err := New().Resize(ImageInput{}, 1, 1, ResizeFilter(255))
+	_, err := New().Resize(nil, 1, 1, ResizeFilter(255))
 	if err == nil || !strings.Contains(err.Error(), "unsupported resize filter") {
 		t.Fatalf("Resize() error = %v, want unsupported-filter error", err)
 	}
@@ -33,7 +32,7 @@ func TestConcatRejectsUnknownDirectionBeforeDecoding(t *testing.T) {
 	t.Parallel()
 
 	_, err := New().Concat(
-		[]ImageInput{{Base64: "not-an-image"}},
+		[][]byte{[]byte("not-an-image")},
 		ConcatDirection(255),
 		0,
 	)
@@ -50,7 +49,7 @@ func TestSetOpacityRejectsNonFiniteValuesBeforeDecoding(t *testing.T) {
 		math.Inf(1),
 		math.Inf(-1),
 	} {
-		_, err := New().SetOpacity(ImageInput{}, opacity)
+		_, err := New().SetOpacity(nil, opacity)
 		if err == nil || !strings.Contains(err.Error(), "finite number") {
 			t.Errorf("SetOpacity(%v) error = %v, want finite-number error", opacity, err)
 		}
@@ -134,7 +133,7 @@ func TestRemoveBackgroundUsesExplicitToleranceAndFeather(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RemoveBackground(threshold) error = %v", err)
 	}
-	if exactOutput.Base64 == thresholdOutput.Base64 {
+	if bytes.Equal(exactOutput.Content, thresholdOutput.Content) {
 		t.Fatal("explicit threshold settings unexpectedly produced identical output")
 	}
 
@@ -222,24 +221,20 @@ func TestTrimTransparentReturnsSourceOffset(t *testing.T) {
 	}
 }
 
-func testImageInput(t *testing.T, source image.Image) ImageInput {
+func testImageInput(t *testing.T, source image.Image) []byte {
 	t.Helper()
 
 	var content bytes.Buffer
 	if err := png.Encode(&content, source); err != nil {
 		t.Fatalf("encode test PNG: %v", err)
 	}
-	return ImageInput{Base64: base64.StdEncoding.EncodeToString(content.Bytes())}
+	return content.Bytes()
 }
 
 func decodeTestOutput(t *testing.T, output ImageOutput) *image.NRGBA {
 	t.Helper()
 
-	content, err := base64.StdEncoding.DecodeString(output.Base64)
-	if err != nil {
-		t.Fatalf("decode output Base64: %v", err)
-	}
-	decoded, err := png.Decode(bytes.NewReader(content))
+	decoded, err := png.Decode(bytes.NewReader(output.Content))
 	if err != nil {
 		t.Fatalf("decode output PNG: %v", err)
 	}

@@ -2,7 +2,6 @@ package imageprocessor
 
 import (
 	"bytes"
-	"encoding/base64"
 	"fmt"
 	"image"
 	"image/color"
@@ -11,28 +10,24 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	"math"
-	"strings"
 
 	"github.com/1024XEngineer/Holonic-Asset/internal/module/processor/image_processor/internal/layout"
 	"github.com/1024XEngineer/Holonic-Asset/internal/module/processor/image_processor/internal/limits"
 	"github.com/1024XEngineer/Holonic-Asset/internal/module/processor/image_processor/internal/transform"
 )
 
-// ImageInput identifies an image by its Base64-encoded content.
-type ImageInput struct {
-	Base64 string
-}
-
-// ImageOutput contains the processed image as Base64-encoded PNG content.
+// ImageOutput contains the processed image as PNG-encoded bytes.
 type ImageOutput struct {
-	Base64    string
-	MediaType string
-	Width     int
-	Height    int
+	Content []byte
+	Width   int
+	Height  int
 	// OffsetX and OffsetY identify the top-left position of a trimmed result
 	// in its source canvas. Operations that do not trim leave both values at 0.
 	OffsetX int
 	OffsetY int
+	// Placement identifies where source content was placed on a generated
+	// canvas. It is populated by layout-aware operations such as ResizeContain.
+	Placement *Rect
 }
 
 type Rect struct {
@@ -54,7 +49,35 @@ type ResizeAnchor uint8
 const (
 	ResizeAnchorCenter ResizeAnchor = iota
 	ResizeAnchorBottomCenter
+	ResizeAnchorTopLeft
+	ResizeAnchorTopCenter
+	ResizeAnchorTopRight
+	ResizeAnchorCenterLeft
+	ResizeAnchorCenterRight
+	ResizeAnchorBottomLeft
+	ResizeAnchorBottomRight
+	ResizeAnchorCustom
 )
+
+type Insets struct {
+	Top    int
+	Right  int
+	Bottom int
+	Left   int
+}
+
+type ResizeContainOptions struct {
+	Width        int
+	Height       int
+	Filter       ResizeFilter
+	Anchor       ResizeAnchor
+	Padding      Insets
+	AllowUpscale bool
+	// AnchorX and AnchorY are normalized positions from 0 through 1 and are
+	// used only when Anchor is ResizeAnchorCustom.
+	AnchorX float64
+	AnchorY float64
+}
 
 type RGBAAdjustment struct {
 	Red   int
@@ -73,12 +96,26 @@ type RGB struct {
 }
 
 type RemoveBackgroundOptions struct {
-	// Background may be omitted to infer the color from the four corners.
+	// Background may be omitted to infer the dominant matte color from the
+	// complete image border.
 	Background *RGB
 	// Tolerance is applied as provided; zero means exact color matching.
 	Tolerance uint8
 	// Feather is applied as provided; zero disables edge feathering.
 	Feather uint8
+	// SpillSuppression removes the sampled matte contribution from partially
+	// transparent edge pixels. Values are percentages from 0 through 100.
+	SpillSuppression uint8
+	// RemoveEnclosed also removes matching matte regions that are not connected
+	// to the image border. Enable it only for controlled matte sources whose
+	// subject is guaranteed not to use the key color.
+	RemoveEnclosed bool
+	// ChromaKey derives soft alpha from a strongly dominant matte channel. It
+	// is intended for controlled green, blue, or red chroma sources and falls
+	// back to distance matching when the sampled matte has no dominant channel.
+	// In this mode, Tolerance and Feather are the transparent and opaque alpha
+	// dead zones respectively.
+	ChromaKey bool
 }
 
 type ConcatDirection uint8
@@ -88,20 +125,21 @@ const (
 	ConcatVertical
 )
 
-// Processor is a collection of independent image tools operating on Base64-encoded images.
+// Processor is a collection of independent image tools operating on encoded images.
 type Processor struct{}
 
 type preparedImage struct {
 	content []byte
 	config  image.Config
+	format  string
 }
 
-// New returns a Processor ready to apply image operations on Base64-encoded inputs.
+// New returns a Processor ready to apply image operations on encoded inputs.
 func New() *Processor {
 	return &Processor{}
 }
 
-func (p *Processor) Crop(input ImageInput, rectangle Rect) (ImageOutput, error) {
+func (p *Processor) Crop(input []byte, rectangle Rect) (ImageOutput, error) {
 	if rectangle.Width <= 0 || rectangle.Height <= 0 {
 		return ImageOutput{}, fmt.Errorf("crop dimensions must be positive")
 	}
@@ -136,7 +174,7 @@ func (p *Processor) Crop(input ImageInput, rectangle Rect) (ImageOutput, error) 
 }
 
 func (p *Processor) Resize(
-	input ImageInput,
+	input []byte,
 	width int,
 	height int,
 	filter ResizeFilter,
@@ -167,25 +205,43 @@ func (p *Processor) Resize(
 // ResizeContain preserves the source aspect ratio, places the scaled image on
 // a transparent canvas of exactly width by height, and never stretches it.
 func (p *Processor) ResizeContain(
-	input ImageInput,
+	input []byte,
 	width int,
 	height int,
 	filter ResizeFilter,
 	anchor ResizeAnchor,
 ) (ImageOutput, error) {
+	return p.ResizeContainWithOptions(input, ResizeContainOptions{
+		Width:        width,
+		Height:       height,
+		Filter:       filter,
+		Anchor:       anchor,
+		AllowUpscale: true,
+	})
+}
+
+// ResizeContainWithOptions preserves source aspect ratio and places it inside
+// a padded transparent canvas. It reports the exact placement rectangle.
+func (p *Processor) ResizeContainWithOptions(
+	input []byte,
+	options ResizeContainOptions,
+) (ImageOutput, error) {
 	if _, err := limits.PixelCount(
 		"resize output",
-		width,
-		height,
+		options.Width,
+		options.Height,
 		limits.MaxOutputPixels,
 	); err != nil {
 		return ImageOutput{}, err
 	}
-	internalFilter, err := toTransformResizeFilter(filter)
+	if err := validateInsets(options.Width, options.Height, options.Padding); err != nil {
+		return ImageOutput{}, err
+	}
+	internalFilter, err := toTransformResizeFilter(options.Filter)
 	if err != nil {
 		return ImageOutput{}, err
 	}
-	internalAnchor, err := toTransformResizeAnchor(anchor)
+	anchorX, anchorY, err := resizeAnchorPosition(options)
 	if err != nil {
 		return ImageOutput{}, err
 	}
@@ -193,21 +249,39 @@ func (p *Processor) ResizeContain(
 	if err != nil {
 		return ImageOutput{}, err
 	}
-	result, err := transform.ResizeContain(
+	result, placement, err := transform.ResizeContain(
 		source,
-		width,
-		height,
+		options.Width,
+		options.Height,
 		internalFilter,
-		internalAnchor,
+		transform.Insets{
+			Top:    options.Padding.Top,
+			Right:  options.Padding.Right,
+			Bottom: options.Padding.Bottom,
+			Left:   options.Padding.Left,
+		},
+		anchorX,
+		anchorY,
+		options.AllowUpscale,
 	)
 	if err != nil {
 		return ImageOutput{}, err
 	}
-	return encodeOutput(result)
+	output, err := encodeOutput(result)
+	if err != nil {
+		return ImageOutput{}, err
+	}
+	output.Placement = &Rect{
+		X:      placement.Min.X,
+		Y:      placement.Min.Y,
+		Width:  placement.Dx(),
+		Height: placement.Dy(),
+	}
+	return output, nil
 }
 
 func (p *Processor) AdjustRGBA(
-	input ImageInput,
+	input []byte,
 	adjustment RGBAAdjustment,
 ) (ImageOutput, error) {
 	source, err := p.load(input)
@@ -225,7 +299,7 @@ func (p *Processor) AdjustRGBA(
 }
 
 func (p *Processor) SetOpacity(
-	input ImageInput,
+	input []byte,
 	opacity float64,
 ) (ImageOutput, error) {
 	if math.IsNaN(opacity) ||
@@ -246,9 +320,14 @@ func (p *Processor) SetOpacity(
 }
 
 func (p *Processor) RemoveBackground(
-	input ImageInput,
+	input []byte,
 	options RemoveBackgroundOptions,
 ) (ImageOutput, error) {
+	if options.SpillSuppression > 100 {
+		return ImageOutput{}, fmt.Errorf(
+			"spill suppression must be between 0 and 100",
+		)
+	}
 	source, err := p.load(input)
 	if err != nil {
 		return ImageOutput{}, err
@@ -267,11 +346,14 @@ func (p *Processor) RemoveBackground(
 		background,
 		options.Tolerance,
 		options.Feather,
+		options.SpillSuppression,
+		options.RemoveEnclosed,
+		options.ChromaKey,
 	))
 }
 
 func (p *Processor) TrimTransparent(
-	input ImageInput,
+	input []byte,
 	alphaThreshold uint8,
 ) (ImageOutput, error) {
 	source, err := p.load(input)
@@ -292,7 +374,7 @@ func (p *Processor) TrimTransparent(
 }
 
 func (p *Processor) Concat(
-	inputs []ImageInput,
+	inputs [][]byte,
 	direction ConcatDirection,
 	gap int,
 ) (ImageOutput, error) {
@@ -365,15 +447,55 @@ func toTransformResizeFilter(filter ResizeFilter) (transform.ResizeFilter, error
 	}
 }
 
-func toTransformResizeAnchor(anchor ResizeAnchor) (transform.ResizeAnchor, error) {
-	switch anchor {
+func resizeAnchorPosition(options ResizeContainOptions) (float64, float64, error) {
+	switch options.Anchor {
 	case ResizeAnchorCenter:
-		return transform.AnchorCenter, nil
+		return 0.5, 0.5, nil
 	case ResizeAnchorBottomCenter:
-		return transform.AnchorBottomCenter, nil
+		return 0.5, 1, nil
+	case ResizeAnchorTopLeft:
+		return 0, 0, nil
+	case ResizeAnchorTopCenter:
+		return 0.5, 0, nil
+	case ResizeAnchorTopRight:
+		return 1, 0, nil
+	case ResizeAnchorCenterLeft:
+		return 0, 0.5, nil
+	case ResizeAnchorCenterRight:
+		return 1, 0.5, nil
+	case ResizeAnchorBottomLeft:
+		return 0, 1, nil
+	case ResizeAnchorBottomRight:
+		return 1, 1, nil
+	case ResizeAnchorCustom:
+		if math.IsNaN(options.AnchorX) || math.IsNaN(options.AnchorY) ||
+			math.IsInf(options.AnchorX, 0) || math.IsInf(options.AnchorY, 0) ||
+			options.AnchorX < 0 || options.AnchorX > 1 ||
+			options.AnchorY < 0 || options.AnchorY > 1 {
+			return 0, 0, fmt.Errorf(
+				"custom resize anchor coordinates must be finite numbers between 0 and 1",
+			)
+		}
+		return options.AnchorX, options.AnchorY, nil
 	default:
-		return 0, fmt.Errorf("unsupported resize anchor: %d", anchor)
+		return 0, 0, fmt.Errorf("unsupported resize anchor: %d", options.Anchor)
 	}
+}
+
+func validateInsets(width int, height int, padding Insets) error {
+	if padding.Top < 0 || padding.Right < 0 ||
+		padding.Bottom < 0 || padding.Left < 0 {
+		return fmt.Errorf("resize padding cannot be negative")
+	}
+	if padding.Left > width ||
+		padding.Right > width-padding.Left ||
+		padding.Top > height ||
+		padding.Bottom > height-padding.Top ||
+		width-padding.Left-padding.Right <= 0 ||
+		height-padding.Top-padding.Bottom <= 0 {
+		return fmt.Errorf("resize padding must leave a positive content area")
+	}
+	return nil
 }
 
 func toLayoutDirection(direction ConcatDirection) (layout.Direction, error) {
@@ -387,7 +509,7 @@ func toLayoutDirection(direction ConcatDirection) (layout.Direction, error) {
 	}
 }
 
-func (p *Processor) load(input ImageInput) (*image.NRGBA, error) {
+func (p *Processor) load(input []byte) (*image.NRGBA, error) {
 	value, err := prepare(input)
 	if err != nil {
 		return nil, err
@@ -395,14 +517,7 @@ func (p *Processor) load(input ImageInput) (*image.NRGBA, error) {
 	return decodePrepared(value)
 }
 
-func prepare(input ImageInput) (preparedImage, error) {
-	if strings.TrimSpace(input.Base64) == "" {
-		return preparedImage{}, fmt.Errorf("base64 image content is required")
-	}
-	content, err := decodeBase64(input.Base64)
-	if err != nil {
-		return preparedImage{}, err
-	}
+func prepare(content []byte) (preparedImage, error) {
 	if len(content) == 0 {
 		return preparedImage{}, fmt.Errorf("image content is empty")
 	}
@@ -414,7 +529,7 @@ func prepare(input ImageInput) (preparedImage, error) {
 		return preparedImage{}, err
 	}
 
-	config, _, err := image.DecodeConfig(bytes.NewReader(content))
+	config, format, err := image.DecodeConfig(bytes.NewReader(content))
 	if err != nil {
 		return preparedImage{}, fmt.Errorf("decode image config: %w", err)
 	}
@@ -426,7 +541,7 @@ func prepare(input ImageInput) (preparedImage, error) {
 	); err != nil {
 		return preparedImage{}, err
 	}
-	return preparedImage{content: content, config: config}, nil
+	return preparedImage{content: content, config: config, format: format}, nil
 }
 
 func decodePrepared(value preparedImage) (*image.NRGBA, error) {
@@ -443,32 +558,6 @@ func decodePrepared(value preparedImage) (*image.NRGBA, error) {
 		return nil, err
 	}
 	return toNRGBA(decoded), nil
-}
-
-func decodeBase64(value string) ([]byte, error) {
-	value = strings.TrimSpace(value)
-	if strings.HasPrefix(value, "data:") {
-		comma := strings.IndexByte(value, ',')
-		if comma < 0 || !strings.Contains(value[:comma], ";base64") {
-			return nil, fmt.Errorf("invalid image data URI")
-		}
-		value = value[comma+1:]
-	}
-	if err := limits.CheckMaximum(
-		"base64 image bytes",
-		len(value),
-		limits.MaxBase64Bytes,
-	); err != nil {
-		return nil, err
-	}
-	content, err := base64.StdEncoding.DecodeString(value)
-	if err != nil {
-		content, err = base64.RawStdEncoding.DecodeString(value)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("decode image Base64: %w", err)
-	}
-	return content, nil
 }
 
 func encodeOutput(value *image.NRGBA) (ImageOutput, error) {
@@ -488,10 +577,9 @@ func encodeOutput(value *image.NRGBA) (ImageOutput, error) {
 		return ImageOutput{}, fmt.Errorf("encode PNG: %w", err)
 	}
 	return ImageOutput{
-		Base64:    base64.StdEncoding.EncodeToString(content.Bytes()),
-		MediaType: "image/png",
-		Width:     value.Bounds().Dx(),
-		Height:    value.Bounds().Dy(),
+		Content: append([]byte(nil), content.Bytes()...),
+		Width:   value.Bounds().Dx(),
+		Height:  value.Bounds().Dy(),
 	}, nil
 }
 
