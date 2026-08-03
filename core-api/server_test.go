@@ -23,6 +23,13 @@ func TestNewAppBuildsApplication(t *testing.T) {
 	}
 }
 
+func TestResolveConfigPathUsesInternalConfigByDefault(t *testing.T) {
+	t.Setenv(configPathEnv, "")
+	if path := resolveConfigPath(); path != "internal/config/config.yaml" {
+		t.Fatalf("unexpected default config path: %q", path)
+	}
+}
+
 func TestInitServerRejectsInvalidDatabaseConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	content := []byte(`
