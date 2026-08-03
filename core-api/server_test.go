@@ -6,11 +6,16 @@ import (
 	"strings"
 	"testing"
 
+	assetdomain "github.com/1024XEngineer/Holonic-Asset/internal/module/workspace/asset"
 	"github.com/1024XEngineer/Holonic-Asset/internal/repository/dao"
 )
 
 type projectDaoStub struct {
 	dao.ProjectDao
+}
+
+type assetStoreStub struct {
+	assetdomain.Store
 }
 
 func TestNewAppBuildsApplication(t *testing.T) {
@@ -27,6 +32,26 @@ func TestResolveConfigPathUsesInternalConfigByDefault(t *testing.T) {
 	t.Setenv(configPathEnv, "")
 	if path := resolveConfigPath(); path != "internal/config/config.yaml" {
 		t.Fatalf("unexpected default config path: %q", path)
+	}
+}
+
+func TestNewAppWithAssetStoreRegistersAssetRoutes(t *testing.T) {
+	app := newApp(&projectDaoStub{}, &assetStoreStub{})
+
+	for _, expectedPath := range []string{
+		"/api/v1/projects/:project_id/assets",
+		"/api/v1/asset/:asset_id",
+	} {
+		found := false
+		for _, route := range app.engine.Routes() {
+			if route.Path == expectedPath {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected production app to register asset route %q", expectedPath)
+		}
 	}
 }
 
