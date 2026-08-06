@@ -88,7 +88,7 @@ func (e *executor) generateCharacterPrototype(
 	ctx context.Context,
 	payload CreateCharacterPrototypePayload,
 ) (json.RawMessage, error) {
-	viewMode, err := parseViewMode(payload.Perspective)
+	perspective, err := parsePerspective(payload.Perspective)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func (e *executor) generateCharacterPrototype(
 		payload.AssetName,
 		payload.ProjectID,
 		payload.CreativeBrief,
-		viewMode,
+		perspective,
 		directionCount,
 		prototypeResources(generated),
 	)
@@ -132,7 +132,7 @@ func (e *executor) generateObjectPrototype(
 	ctx context.Context,
 	payload CreateObjectPrototypePayload,
 ) (json.RawMessage, error) {
-	viewMode, err := parseViewMode(payload.Perspective)
+	perspective, err := parsePerspective(payload.Perspective)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func (e *executor) generateObjectPrototype(
 		payload.AssetName,
 		payload.ProjectID,
 		payload.CreativeBrief,
-		viewMode,
+		perspective,
 		0,
 		prototypeResources(generated),
 	)
@@ -268,12 +268,12 @@ func newPrototypeAsset(
 	name string,
 	projectID uint,
 	description string,
-	viewMode assetdomain.ViewMode,
+	perspective assetdomain.Perspective,
 	directionCount uint,
 	prototype []assetdomain.ImageResource,
 ) (*assetdomain.Asset, error) {
 	content := assetdomain.NewAssetContent(assetType)
-	content.ViewMode = viewMode
+	content.Perspective = perspective
 	prototypeValue := assetdomain.Prototype(prototype)
 	content.Prototype = &prototypeValue
 	content.DirectionCount = directionCount
@@ -290,15 +290,12 @@ func newPrototypeAsset(
 	}, nil
 }
 
-func parseViewMode(perspective string) (assetdomain.ViewMode, error) {
-	switch perspective {
-	case string(assetdomain.ViewModeSideOn):
-		return assetdomain.ViewModeSideOn, nil
-	case string(assetdomain.ViewModeTopDown):
-		return assetdomain.ViewModeTopDown, nil
-	default:
+func parsePerspective(perspective string) (assetdomain.Perspective, error) {
+	value := assetdomain.Perspective(perspective)
+	if !value.Valid() {
 		return "", fmt.Errorf("generator: invalid perspective %q", perspective)
 	}
+	return value, nil
 }
 
 func parseDirectionCount(directionCount string) (uint, error) {

@@ -20,15 +20,6 @@ func (t GameType) Valid() bool {
 	}
 }
 
-func (t ViewType) Valid() bool {
-	switch t {
-	case "", ViewTypeTopDown, ViewTypeSideView, ViewTypeIsometric:
-		return true
-	default:
-		return false
-	}
-}
-
 func (t PlatformType) Valid() bool {
 	switch t {
 	case "", PlatformTypePC, PlatformTypeMobile, PlatformTypeWeb:
@@ -76,8 +67,8 @@ func (p *Project) validateDefinition() error {
 	if !p.GameType.Valid() {
 		return invalidProject("gameType is invalid")
 	}
-	if !p.ViewType.Valid() {
-		return invalidProject("viewType is invalid")
+	if !p.Perspective.Valid() {
+		return invalidProject("perspective is invalid")
 	}
 	if !p.TargetPlatform.Valid() {
 		return invalidProject("targetPlatform is invalid")
@@ -101,8 +92,8 @@ func (u *ProjectUpdate) Validate() error {
 	if u.GameType != nil && !u.GameType.Valid() {
 		return invalidProject("gameType is invalid")
 	}
-	if u.ViewType != nil && !u.ViewType.Valid() {
-		return invalidProject("viewType is invalid")
+	if u.Perspective != nil && !u.Perspective.Valid() {
+		return invalidProject("perspective is invalid")
 	}
 	if u.TargetPlatform != nil && !u.TargetPlatform.Valid() {
 		return invalidProject("targetPlatform is invalid")
@@ -113,7 +104,7 @@ func (u *ProjectUpdate) Validate() error {
 func (u *ProjectUpdate) hasChanges() bool {
 	return u.Name != nil ||
 		u.GameType != nil ||
-		u.ViewType != nil ||
+		u.Perspective != nil ||
 		u.TargetPlatform != nil ||
 		u.Description != nil ||
 		u.Reference != nil ||

@@ -57,6 +57,16 @@ func (s *imageProcessorStub) Verify(
 	return &imageprocessor.VerificationReport{Passed: true}, nil
 }
 
+func (s *imageProcessorStub) SplitImage(
+	_ context.Context,
+	_ *imageprocessor.SplitImageRequest,
+) (*imageprocessor.SplitImageResult, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &imageprocessor.SplitImageResult{}, nil
+}
+
 func (s *imageGenerationServiceStub) Generate(
 	_ context.Context,
 	request *imageclient.GenerateRequest,
@@ -159,7 +169,7 @@ func TestExecutorGeneratesCharacterPrototypeBeforeCreatingAsset(t *testing.T) {
 		"asset_name":"hero",
 		"creative_brief":"pixel knight",
 		"canvas_size":"64x64",
-		"perspective":"top_down",
+		"perspective":"Top-Down",
 		"direction_count":"4",
 		"reference":"https://cdn.example/reference.png",
 		"project_id":11
@@ -191,7 +201,7 @@ func TestExecutorGeneratesCharacterPrototypeBeforeCreatingAsset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode character content: %v", err)
 	}
-	if content.ViewMode != assetdomain.ViewModeTopDown || content.DirectionCount != 4 {
+	if content.Perspective != assetdomain.PerspectiveTopDown || content.DirectionCount != 4 {
 		t.Fatalf("unexpected character content: %+v", content)
 	}
 	assertPrototypeResources(t, assets.characterAsset)
@@ -207,7 +217,7 @@ func TestExecutorGeneratesObjectPrototypeBeforeCreatingAsset(t *testing.T) {
 		"asset_name":"chest",
 		"creative_brief":"wooden chest",
 		"canvas_size":"128x128",
-		"perspective":"top_down",
+		"perspective":"Isometric",
 		"project_id":12
 	}`)
 
@@ -228,6 +238,13 @@ func TestExecutorGeneratesObjectPrototypeBeforeCreatingAsset(t *testing.T) {
 	if assets.objectAsset == nil || assets.objectAsset.Name != "chest" ||
 		assets.objectAsset.ProjectID != 12 || assets.objectAsset.Type != assetdomain.AssetTypeObject {
 		t.Fatalf("unexpected object asset: %+v", assets.objectAsset)
+	}
+	content, err := assets.objectAsset.DecodeContent()
+	if err != nil {
+		t.Fatalf("decode object content: %v", err)
+	}
+	if content.Perspective != assetdomain.PerspectiveIsometric {
+		t.Fatalf("unexpected object perspective: %q", content.Perspective)
 	}
 	assertPrototypeResources(t, assets.objectAsset)
 	assertExecutionResult(t, result, generator.ExecutionResult{AssetID: 42})
@@ -322,7 +339,7 @@ func TestExecutorRejectsInvalidPrototypeEnumsBeforeImageGeneration(t *testing.T)
 				"asset_name":"hero",
 				"creative_brief":"pixel knight",
 				"canvas_size":"64x64",
-				"perspective":"top_down",
+				"perspective":"Top-Down",
 				"direction_count":"3",
 				"project_id":11
 			}`),

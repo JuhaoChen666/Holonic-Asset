@@ -1,7 +1,9 @@
 package project
 
+import perspectivedomain "github.com/1024XEngineer/Holonic-Asset/internal/module/workspace/perspective"
+
 type GameType string
-type ViewType string
+type Perspective = perspectivedomain.Perspective
 type PlatformType string
 
 const (
@@ -9,9 +11,9 @@ const (
 	GameTypeACT GameType = "ACT"
 	GameTypeSLG GameType = "SLG"
 
-	ViewTypeTopDown   ViewType = "TopDown"
-	ViewTypeSideView  ViewType = "SideView"
-	ViewTypeIsometric ViewType = "Isometric"
+	PerspectiveTopDown   = perspectivedomain.TopDown
+	PerspectiveSideOn    = perspectivedomain.SideOn
+	PerspectiveIsometric = perspectivedomain.Isometric
 
 	PlatformTypePC     PlatformType = "PC"
 	PlatformTypeMobile PlatformType = "Mobile"

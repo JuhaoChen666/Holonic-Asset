@@ -62,12 +62,15 @@ func TestProjectReferenceGenerationUsesOpenAPIContract(t *testing.T) {
 	if stub.generateReferenceRequest.Name != "Prototype" || stub.generateReferenceRequest.Description != "养殖游戏" {
 		t.Fatalf("unexpected generate reference request: %+v", stub.generateReferenceRequest)
 	}
+	if stub.generateReferenceRequest.Perspective != project.PerspectiveTopDown {
+		t.Fatalf("expected default perspective, got %q", stub.generateReferenceRequest.Perspective)
+	}
 	if recorder.Body.String() != "{\"code\":200,\"message\":\"success\",\"data\":{\"reference\":\"data:image/png;base64,aGVsbG8=\"}}\n" {
 		t.Fatalf("unexpected generate reference response: %s", recorder.Body.String())
 	}
 }
 
-func TestProjectReferenceGenerationAllowsExplicitEmptyClassifications(t *testing.T) {
+func TestProjectReferenceGenerationRejectsExplicitEmptyPerspective(t *testing.T) {
 	stub := &projectRouterStub{}
 	e := router.Register(nil, stub, nil, nil)
 	recorder := serveProjectRequest(
@@ -75,11 +78,11 @@ func TestProjectReferenceGenerationAllowsExplicitEmptyClassifications(t *testing
 		e,
 		http.MethodPost,
 		"/api/v1/project/reference/generate",
-		`{"name":"Prototype","gameType":"","viewType":"","targetPlatform":""}`,
+		`{"name":"Prototype","perspective":""}`,
 	)
 
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusUnprocessableEntity, recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -97,6 +100,9 @@ func TestProjectCreateAllowsOmittedClassifications(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, recorder.Code, recorder.Body.String())
 	}
+	if stub.createRequest.Perspective != project.PerspectiveTopDown {
+		t.Fatalf("expected default perspective, got %q", stub.createRequest.Perspective)
+	}
 }
 
 func TestProjectCreateUsesOpenAPIContract(t *testing.T) {
@@ -107,13 +113,14 @@ func TestProjectCreateUsesOpenAPIContract(t *testing.T) {
 		e,
 		http.MethodPost,
 		"/api/v1/project/create",
-		`{"userID":7,"name":"Prototype","gameType":"RPG","viewType":"TopDown","targetPlatform":"PC"}`,
+		`{"userID":7,"name":"Prototype","gameType":"RPG","perspective":"Side-On","targetPlatform":"PC"}`,
 	)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, recorder.Code, recorder.Body.String())
 	}
-	if stub.createRequest.UserID != 7 || stub.createRequest.Name != "Prototype" {
+	if stub.createRequest.UserID != 7 || stub.createRequest.Name != "Prototype" ||
+		stub.createRequest.Perspective != project.PerspectiveSideOn {
 		t.Fatalf("unexpected create request: %+v", stub.createRequest)
 	}
 	if recorder.Body.String() != "{\"code\":200,\"message\":\"success\",\"data\":{\"id\":42}}\n" {
@@ -134,7 +141,28 @@ func TestProjectRoutesRejectInvalidRequests(t *testing.T) {
 			name:           "create without name",
 			method:         http.MethodPost,
 			path:           "/api/v1/project/create",
-			body:           `{"userID":7,"gameType":"RPG","viewType":"TopDown","targetPlatform":"PC"}`,
+			body:           `{"userID":7,"gameType":"RPG","perspective":"Top-Down","targetPlatform":"PC"}`,
+			expectedStatus: http.StatusUnprocessableEntity,
+		},
+		{
+			name:           "create with legacy view type field",
+			method:         http.MethodPost,
+			path:           "/api/v1/project/create",
+			body:           `{"userID":7,"name":"Prototype","viewType":"SideView"}`,
+			expectedStatus: http.StatusUnprocessableEntity,
+		},
+		{
+			name:           "create with legacy side view value",
+			method:         http.MethodPost,
+			path:           "/api/v1/project/create",
+			body:           `{"userID":7,"name":"Prototype","perspective":"SideView"}`,
+			expectedStatus: http.StatusUnprocessableEntity,
+		},
+		{
+			name:           "create with empty perspective",
+			method:         http.MethodPost,
+			path:           "/api/v1/project/create",
+			body:           `{"userID":7,"name":"Prototype","perspective":""}`,
 			expectedStatus: http.StatusUnprocessableEntity,
 		},
 		{
@@ -149,6 +177,13 @@ func TestProjectRoutesRejectInvalidRequests(t *testing.T) {
 			path:           "/api/v1/project/update",
 			body:           `{"projectID":42}`,
 			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "update with empty perspective",
+			method:         http.MethodPost,
+			path:           "/api/v1/project/update",
+			body:           `{"projectID":42,"perspective":""}`,
+			expectedStatus: http.StatusUnprocessableEntity,
 		},
 		{
 			name:           "delete without project ID",
