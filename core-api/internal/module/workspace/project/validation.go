@@ -3,6 +3,7 @@ package project
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -14,15 +15,6 @@ var (
 func (t GameType) Valid() bool {
 	switch t {
 	case "", GameTypeRPG, GameTypeACT, GameTypeSLG:
-		return true
-	default:
-		return false
-	}
-}
-
-func (t ViewType) Valid() bool {
-	switch t {
-	case "", ViewTypeTopDown, ViewTypeSideView, ViewTypeIsometric:
 		return true
 	default:
 		return false
@@ -66,7 +58,13 @@ func (p *Project) ValidateReferenceGeneration() error {
 	if p == nil {
 		return invalidProject("project is required")
 	}
-	return p.validateDefinition()
+	if err := p.validateDefinition(); err != nil {
+		return err
+	}
+	if !validGenerationReference(p.Reference) {
+		return invalidProject("reference must be an HTTP(S) URL")
+	}
+	return nil
 }
 
 func (p *Project) validateDefinition() error {
@@ -76,13 +74,26 @@ func (p *Project) validateDefinition() error {
 	if !p.GameType.Valid() {
 		return invalidProject("gameType is invalid")
 	}
-	if !p.ViewType.Valid() {
-		return invalidProject("viewType is invalid")
+	if !p.Perspective.Valid() {
+		return invalidProject("perspective is invalid")
 	}
 	if !p.TargetPlatform.Valid() {
 		return invalidProject("targetPlatform is invalid")
 	}
 	return nil
+}
+
+func validGenerationReference(reference string) bool {
+	reference = strings.TrimSpace(reference)
+	if reference == "" {
+		return true
+	}
+
+	parsed, err := url.ParseRequestURI(reference)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	return strings.EqualFold(parsed.Scheme, "http") || strings.EqualFold(parsed.Scheme, "https")
 }
 
 func (u *ProjectUpdate) Validate() error {
@@ -101,8 +112,8 @@ func (u *ProjectUpdate) Validate() error {
 	if u.GameType != nil && !u.GameType.Valid() {
 		return invalidProject("gameType is invalid")
 	}
-	if u.ViewType != nil && !u.ViewType.Valid() {
-		return invalidProject("viewType is invalid")
+	if u.Perspective != nil && !u.Perspective.Valid() {
+		return invalidProject("perspective is invalid")
 	}
 	if u.TargetPlatform != nil && !u.TargetPlatform.Valid() {
 		return invalidProject("targetPlatform is invalid")
@@ -113,7 +124,7 @@ func (u *ProjectUpdate) Validate() error {
 func (u *ProjectUpdate) hasChanges() bool {
 	return u.Name != nil ||
 		u.GameType != nil ||
-		u.ViewType != nil ||
+		u.Perspective != nil ||
 		u.TargetPlatform != nil ||
 		u.Description != nil ||
 		u.Reference != nil ||

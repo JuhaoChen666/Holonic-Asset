@@ -9,6 +9,7 @@ import {
 import { AlertTriangle, LoaderCircle, MapPinOff } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 function RouteStatus({
   action,
@@ -41,10 +42,7 @@ function RouteStatus({
 
 function ProjectLibraryLink() {
   return (
-    <Button
-      nativeButton={false}
-      render={<Link to="/projects" search={{ project: undefined, q: "" }} />}
-    >
+    <Button nativeButton={false} render={<Link to="/projects" />}>
       Go to project library
     </Button>
   );
@@ -95,10 +93,10 @@ function RouteNotFound() {
 
 function RootComponent() {
   return (
-    <>
+    <TooltipProvider>
       <HeadContent />
       <Outlet />
-    </>
+    </TooltipProvider>
   );
 }
 

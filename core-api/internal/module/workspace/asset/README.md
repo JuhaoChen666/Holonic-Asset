@@ -82,7 +82,7 @@ The asset's full business content is in `data.content`. `data.type` determines t
 | `content` | `object` | Full business content of the asset |
 | `version` | `number` | Asset business version |
 
-Current asset types: `character`, `object`, `tileSet`, `audio`, `ui`, `scenery`.
+Current asset types: `character`, `object`, `tileSet`, `audio`, `uiset`, `scenery`.
 
 The asset's own metadata goes in `data.attributes`. Extended metadata within the business content goes in `data.content.metadata`. Task IDs, execution status, and error information belong to Tasks and are not nested inside Asset Content. The frontend should query the corresponding Task to determine whether the generation task is complete, then read the written resources from the Asset.
 
@@ -92,7 +92,7 @@ Character contains `prototype` and `animations`. Direction resources are represe
 
 ```json
 {
-  "viewMode": "top_down",
+  "perspective": "Top-Down",
   "directionCount": 4,
   "prototype": [
     {
@@ -135,11 +135,11 @@ Character contains `prototype` and `animations`. Direction resources are represe
 
 `directionCount` retains the expected number of directional resources. The arrays do not currently expose names such as `up`, `down`, `left`, or `right`.
 
-For example, a two-direction asset is represented by two prototype elements:
+For example, a side-on character uses two side-facing prototypes:
 
 ```json
 {
-  "viewMode": "side_on",
+  "perspective": "Side-On",
   "directionCount": 2,
   "prototype": [
     {
@@ -156,8 +156,8 @@ For example, a two-direction asset is represented by two prototype elements:
 
 Character conventions:
 
-- `viewMode` represents the asset's perspective mode. Currently includes `side_on` and `top_down`.
-- `directionCount` is the number of directions to generate for the current asset. Only `1`, `2`, `4`, or `8` are used.
+- `perspective` is exactly one of `Top-Down`, `Side-On`, or `Isometric`.
+- `directionCount` is derived from character perspective: `Side-On` uses `2`, `Top-Down` uses `4`, and `Isometric` uses `8`.
 - `prototype` is a plain array of image resources.
 - `animations[].frames` is a plain array of animation frames.
 - Direction names and direction-to-array-index mappings are intentionally not defined at this stage.
@@ -170,8 +170,7 @@ Object uses the same content structure as Character. It may have only a prototyp
 
 ```json
 {
-  "viewMode": "side_on",
-  "directionCount": 2,
+  "perspective": "Side-On",
   "prototype": [],
   "animations": [
     {

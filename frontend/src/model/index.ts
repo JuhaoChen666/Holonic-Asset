@@ -2,9 +2,10 @@ export {
   assetApi,
   assetKinds,
   assetKeys,
-  assetRecordModeForKind,
   creatableAssetKinds,
+  createAssetLibraryCollection,
   getDefaultAssetCanvasSize,
+  recordQueryOptions,
   useAddAudioTrackMutation,
   useAssetLibraryQuery,
   useAudioTracksQuery,
@@ -19,8 +20,13 @@ export {
 export type {
   AddAudioTrackInput,
   AssetAnimation,
+  AssetPreviewCrop,
+  AssetPreviewFrame,
+  AssetPreviewOffset,
   AssetGroup,
   AssetGroupsByProject,
+  AssetLibraryCollection,
+  AssetLibraryItem,
   AssetKind,
   AssetRevision,
   AssetRevisionStatus,
@@ -50,15 +56,16 @@ export type {
   CharacterAssetRecord,
   SceneryAssetKind,
   SceneryAssetRecord,
+  SpriteAssetRecordData,
   TilesetAssetKind,
   TilesetAssetRecord,
-  TilesetCell,
   TilesetItem,
-  UiAssetKind,
-  UiAssetRecord,
-  UiComponent,
+  UISetAssetKind,
+  UISetAssetRecord,
+  UISetComponent,
   UpdateAudioTrackInput,
 } from "./asset";
+export type { ItemTile } from "./item-tile";
 export { coreAssetApi } from "./asset/library/asset.api";
 export type {
   AssetAnimationFrameResponse,
@@ -119,6 +126,8 @@ export type {
   ListGenerationRunsResponse,
 } from "./generation/run/generation.api";
 export {
+  isPerspective,
+  perspectiveOptions,
   reconcileProjectSelection,
   removeProjectSelection,
   useCreateProjectMutation,
@@ -126,7 +135,12 @@ export {
   useProjectListQuery,
   useUpdateProjectMutation,
 } from "./project";
-export type { Project, ProjectSummary } from "./project";
+export type {
+  CreateProjectInput,
+  Perspective,
+  Project,
+  ProjectSummary,
+} from "./project";
 export { coreProjectApi } from "./project/project.api";
 export type {
   CreateProjectRequest,
@@ -140,4 +154,5 @@ export type {
   GenerateAnimationRequest,
   GenerateAnimationResult,
   GeneratedCharacterAnimation,
+  SpriteAssetKind,
 } from "./generation";

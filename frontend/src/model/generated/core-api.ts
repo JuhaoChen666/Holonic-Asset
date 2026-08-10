@@ -80,9 +80,9 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
         /** Update an asset */
-        post: operations["updateAsset"];
+        put: operations["updateAsset"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -183,9 +183,9 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        post?: never;
         /** Delete a project */
-        post: operations["deleteProject"];
-        delete?: never;
+        delete: operations["deleteProject"];
         options?: never;
         head?: never;
         patch?: never;
@@ -250,9 +250,9 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
         /** Update a project */
-        post: operations["updateProject"];
+        put: operations["updateProject"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -326,7 +326,7 @@ export interface components {
             projectId: number;
             tags: string[] | null;
             /** @enum {string} */
-            type: "character" | "object" | "tileSet" | "audio" | "ui" | "scenery";
+            type: "character" | "object" | "tileSet" | "audio" | "uiset" | "scenery";
             /** Format: int64 */
             version: number;
         };
@@ -339,7 +339,7 @@ export interface components {
             projectId: number;
             tags: string[] | null;
             /** @enum {string} */
-            type: "character" | "object" | "tileSet" | "audio" | "ui" | "scenery";
+            type: "character" | "object" | "tileSet" | "audio" | "uiset" | "scenery";
             /** Format: int64 */
             version: number;
         };
@@ -357,11 +357,10 @@ export interface components {
         CreateGenerationRequest: {
             /** Format: int64 */
             assetId?: number;
+            creative_brief: string;
             /** @enum {string} */
             kind: "generate_character_prototype" | "edit_character_prototype" | "edit_character_frames" | "generate_object_prototype" | "edit_object_prototype" | "edit_object_frames" | "generate_animation" | "edit_animation" | "generate_tileset" | "edit_tileset_item" | "edit_tiles";
             parameters?: unknown;
-            prompt: string;
-            referenceMediaIds?: string[] | null;
             targetAssetPaths?: string[] | null;
         };
         CreateGenerationResponse: {
@@ -373,14 +372,17 @@ export interface components {
             /** @enum {string} */
             gameType?: "" | "RPG" | "ACT" | "SLG";
             name: string;
+            /**
+             * @default Top-Down
+             * @enum {string}
+             */
+            perspective: "Top-Down" | "Side-On" | "Isometric";
             reference?: string;
             style?: string;
             /** @enum {string} */
             targetPlatform?: "" | "PC" | "Mobile" | "Web";
             /** Format: int64 */
             userID: number;
-            /** @enum {string} */
-            viewType?: "" | "TopDown" | "SideView" | "Isometric";
         };
         CreateProjectResponse: {
             /** Format: int64 */
@@ -451,12 +453,15 @@ export interface components {
             /** @enum {string} */
             gameType?: "" | "RPG" | "ACT" | "SLG";
             name: string;
+            /**
+             * @default Top-Down
+             * @enum {string}
+             */
+            perspective: "Top-Down" | "Side-On" | "Isometric";
             reference?: string;
             style?: string;
             /** @enum {string} */
             targetPlatform?: "" | "PC" | "Mobile" | "Web";
-            /** @enum {string} */
-            viewType?: "" | "TopDown" | "SideView" | "Isometric";
         };
         GenerateProjectReferenceResponse: {
             reference: string;
@@ -510,14 +515,14 @@ export interface components {
             /** Format: int64 */
             id: number;
             name: string;
+            /** @enum {string} */
+            perspective: "Top-Down" | "Side-On" | "Isometric";
             reference: string;
             style: string;
             /** @enum {string} */
             targetPlatform: "" | "PC" | "Mobile" | "Web";
             /** Format: int64 */
             userID: number;
-            /** @enum {string} */
-            viewType: "" | "TopDown" | "SideView" | "Isometric";
         };
         RecordAssetRequest: {
             /** Format: int64 */
@@ -750,7 +755,7 @@ export interface components {
             projectId?: number;
             tags?: string[];
             /** @enum {string} */
-            type?: "character" | "object" | "tileSet" | "audio" | "ui" | "scenery";
+            type?: "character" | "object" | "tileSet" | "audio" | "uiset" | "scenery";
         };
         UpdateAssetResponse: {
             /** Format: int64 */
@@ -762,7 +767,7 @@ export interface components {
             projectId: number;
             tags: string[] | null;
             /** @enum {string} */
-            type: "character" | "object" | "tileSet" | "audio" | "ui" | "scenery";
+            type: "character" | "object" | "tileSet" | "audio" | "uiset" | "scenery";
             /** Format: int64 */
             version: number;
         };
@@ -771,14 +776,14 @@ export interface components {
             /** @enum {string} */
             gameType?: "" | "RPG" | "ACT" | "SLG";
             name?: string;
+            /** @enum {string} */
+            perspective?: "Top-Down" | "Side-On" | "Isometric";
             /** Format: int64 */
             projectID: number;
             reference?: string;
             style?: string;
             /** @enum {string} */
             targetPlatform?: "" | "PC" | "Mobile" | "Web";
-            /** @enum {string} */
-            viewType?: "" | "TopDown" | "SideView" | "Isometric";
         };
         UpdateProjectResponse: {
             success: boolean;
@@ -1547,7 +1552,7 @@ export interface operations {
             query?: {
                 query?: string;
                 tags?: string[] | null;
-                types?: ("character" | "object" | "tileSet" | "audio" | "ui" | "scenery")[] | null;
+                types?: ("character" | "object" | "tileSet" | "audio" | "uiset" | "scenery")[] | null;
             };
             header?: never;
             path: {

@@ -1,5 +1,7 @@
 import type { CreatableAssetKind } from "@/model/asset";
 import type { CreationRequest } from "@/model/generation";
+import type { Perspective } from "@/model/project";
+import type { ItemTile } from "@/model/item-tile";
 
 type CommonAssetCreationDraft<K extends CreatableAssetKind> = {
   kind: K;
@@ -11,9 +13,9 @@ type CommonAssetCreationDraft<K extends CreatableAssetKind> = {
 
 export type VisualAssetCreationDraft<Reference = unknown> =
   CommonAssetCreationDraft<
-    Exclude<CreatableAssetKind, "audio" | "scenery" | "tileset" | "ui">
+    Exclude<CreatableAssetKind, "audio" | "scenery" | "tileset" | "uiset">
   > & {
-    perspective: NonNullable<CreationRequest["perspective"]>;
+    perspective: Perspective;
     directionCount: NonNullable<CreationRequest["directionCount"]>;
     reference: Reference | undefined;
   };
@@ -28,11 +30,15 @@ export type SceneryAssetCreationDraft<Reference = unknown> =
 
 export type TilesetAssetCreationDraft<Reference = unknown> =
   CommonAssetCreationDraft<"tileset"> & {
-    tiles: { description: string; reference: Reference | undefined }[];
+    tiles: {
+      description: string;
+      reference: Reference | undefined;
+      shape: ItemTile[];
+    }[];
   };
 
-export type UiAssetCreationDraft<Reference = unknown> =
-  CommonAssetCreationDraft<"ui"> & {
+export type UISetAssetCreationDraft<Reference = unknown> =
+  CommonAssetCreationDraft<"uiset"> & {
     style: string;
     reference: Reference | undefined;
     components: { name: string; description: string; isCustom: boolean }[];
@@ -44,5 +50,5 @@ export type AssetCreationDraft<Reference = unknown> =
   | VisualAssetCreationDraft<Reference>
   | SceneryAssetCreationDraft<Reference>
   | TilesetAssetCreationDraft<Reference>
-  | UiAssetCreationDraft<Reference>
+  | UISetAssetCreationDraft<Reference>
   | AudioAssetCreationDraft;

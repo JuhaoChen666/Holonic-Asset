@@ -37,7 +37,7 @@
               "object",
               "tileSet",
               "audio",
-              "ui",
+              "uiset",
               "scenery"
             ],
             "type": "string"
@@ -94,7 +94,7 @@
               "object",
               "tileSet",
               "audio",
-              "ui",
+              "uiset",
               "scenery"
             ],
             "type": "string"
@@ -164,6 +164,10 @@
             "minimum": 1,
             "type": "integer"
           },
+          "creative_brief": {
+            "minLength": 1,
+            "type": "string"
+          },
           "kind": {
             "enum": [
               "generate_character_prototype",
@@ -181,18 +185,6 @@
             "type": "string"
           },
           "parameters": {},
-          "prompt": {
-            "type": "string"
-          },
-          "referenceMediaIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
           "targetAssetPaths": {
             "items": {
               "type": "string"
@@ -205,7 +197,7 @@
         },
         "required": [
           "kind",
-          "prompt"
+          "creative_brief"
         ],
         "type": "object"
       },
@@ -242,6 +234,15 @@
             "minLength": 1,
             "type": "string"
           },
+          "perspective": {
+            "default": "Top-Down",
+            "enum": [
+              "Top-Down",
+              "Side-On",
+              "Isometric"
+            ],
+            "type": "string"
+          },
           "reference": {
             "type": "string"
           },
@@ -261,15 +262,6 @@
             "format": "int64",
             "minimum": 1,
             "type": "integer"
-          },
-          "viewType": {
-            "enum": [
-              "",
-              "TopDown",
-              "SideView",
-              "Isometric"
-            ],
-            "type": "string"
           }
         },
         "required": [
@@ -454,6 +446,15 @@
             "minLength": 1,
             "type": "string"
           },
+          "perspective": {
+            "default": "Top-Down",
+            "enum": [
+              "Top-Down",
+              "Side-On",
+              "Isometric"
+            ],
+            "type": "string"
+          },
           "reference": {
             "type": "string"
           },
@@ -466,15 +467,6 @@
               "PC",
               "Mobile",
               "Web"
-            ],
-            "type": "string"
-          },
-          "viewType": {
-            "enum": [
-              "",
-              "TopDown",
-              "SideView",
-              "Isometric"
             ],
             "type": "string"
           }
@@ -704,6 +696,14 @@
           "name": {
             "type": "string"
           },
+          "perspective": {
+            "enum": [
+              "Top-Down",
+              "Side-On",
+              "Isometric"
+            ],
+            "type": "string"
+          },
           "reference": {
             "type": "string"
           },
@@ -723,15 +723,6 @@
             "format": "int64",
             "minimum": 1,
             "type": "integer"
-          },
-          "viewType": {
-            "enum": [
-              "",
-              "TopDown",
-              "SideView",
-              "Isometric"
-            ],
-            "type": "string"
           }
         },
         "required": [
@@ -739,7 +730,7 @@
           "id",
           "name",
           "gameType",
-          "viewType",
+          "perspective",
           "targetPlatform",
           "description",
           "reference",
@@ -1352,7 +1343,7 @@
               "object",
               "tileSet",
               "audio",
-              "ui",
+              "uiset",
               "scenery"
             ],
             "type": "string"
@@ -1398,7 +1389,7 @@
               "object",
               "tileSet",
               "audio",
-              "ui",
+              "uiset",
               "scenery"
             ],
             "type": "string"
@@ -1440,6 +1431,14 @@
             "minLength": 1,
             "type": "string"
           },
+          "perspective": {
+            "enum": [
+              "Top-Down",
+              "Side-On",
+              "Isometric"
+            ],
+            "type": "string"
+          },
           "projectID": {
             "format": "int64",
             "minimum": 1,
@@ -1457,15 +1456,6 @@
               "PC",
               "Mobile",
               "Web"
-            ],
-            "type": "string"
-          },
-          "viewType": {
-            "enum": [
-              "",
-              "TopDown",
-              "SideView",
-              "Isometric"
             ],
             "type": "string"
           }
@@ -1764,7 +1754,7 @@
       }
     },
     "/asset/update": {
-      "post": {
+      "put": {
         "operationId": "updateAsset",
         "requestBody": {
           "content": {
@@ -2098,7 +2088,7 @@
       }
     },
     "/project/delete": {
-      "post": {
+      "delete": {
         "operationId": "deleteProject",
         "requestBody": {
           "content": {
@@ -2368,7 +2358,7 @@
       }
     },
     "/project/update": {
-      "post": {
+      "put": {
         "operationId": "updateProject",
         "requestBody": {
           "content": {
@@ -2485,7 +2475,7 @@
                   "object",
                   "tileSet",
                   "audio",
-                  "ui",
+                  "uiset",
                   "scenery"
                 ],
                 "type": "string"

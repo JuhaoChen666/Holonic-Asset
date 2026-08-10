@@ -1,5 +1,6 @@
 export {
   generationKeys,
+  isGenerationRunActive,
   useEnqueueGenerationMutation,
   useGenerationRunsQuery,
 } from "./run";
@@ -16,4 +17,5 @@ export type {
   GenerateAnimationRequest,
   GenerateAnimationResult,
   GeneratedCharacterAnimation,
+  SpriteAssetKind,
 } from "./animation";

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/1024XEngineer/Holonic-Asset/internal/handler"
@@ -27,10 +28,15 @@ func TestOpenAPIIncludesHTTPContract(t *testing.T) {
 	}
 
 	var document struct {
-		OpenAPI string `json:"openapi"`
-		Paths   map[string]struct {
-			Get  json.RawMessage `json:"get"`
-			Post json.RawMessage `json:"post"`
+		OpenAPI    string `json:"openapi"`
+		Components struct {
+			Schemas map[string]json.RawMessage `json:"schemas"`
+		} `json:"components"`
+		Paths map[string]struct {
+			Get    json.RawMessage `json:"get"`
+			Post   json.RawMessage `json:"post"`
+			Put    json.RawMessage `json:"put"`
+			Delete json.RawMessage `json:"delete"`
 		} `json:"paths"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &document); err != nil {
@@ -39,14 +45,48 @@ func TestOpenAPIIncludesHTTPContract(t *testing.T) {
 	if document.OpenAPI != "3.1.0" {
 		t.Fatalf("expected OpenAPI 3.1.0, got %q", document.OpenAPI)
 	}
+	expectedPerspectives := []string{"Top-Down", "Side-On", "Isometric"}
+	type perspectiveSchema struct {
+		Enum    []string `json:"enum"`
+		Default string   `json:"default"`
+	}
+	perspectiveSchemas := map[string]perspectiveSchema{}
+	for _, schemaName := range []string{"CreateProjectRequest", "GenerateProjectReferenceRequest", "ProjectResponse", "UpdateProjectRequest"} {
+		var schema struct {
+			Properties map[string]perspectiveSchema `json:"properties"`
+		}
+		if err := json.Unmarshal(document.Components.Schemas[schemaName], &schema); err != nil {
+			t.Fatalf("decode %s schema: %v", schemaName, err)
+		}
+		perspective := schema.Properties["perspective"]
+		perspectiveSchemas[schemaName] = perspective
+		if !reflect.DeepEqual(perspective.Enum, expectedPerspectives) {
+			t.Fatalf("unexpected %s perspective enum: %v", schemaName, perspective.Enum)
+		}
+	}
+	for _, schemaName := range []string{"CreateProjectRequest", "GenerateProjectReferenceRequest"} {
+		if got := perspectiveSchemas[schemaName].Default; got != "Top-Down" {
+			t.Fatalf("unexpected %s perspective default: %q", schemaName, got)
+		}
+	}
+
+	var generateReferenceSchema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(document.Components.Schemas["GenerateProjectReferenceRequest"], &generateReferenceSchema); err != nil {
+		t.Fatalf("decode GenerateProjectReferenceRequest schema: %v", err)
+	}
+	if _, ok := generateReferenceSchema.Properties["reference"]; !ok {
+		t.Fatal("GenerateProjectReferenceRequest must expose the optional current reference")
+	}
 
 	expectedMethods := map[string][]string{
 		"/project/create":                        {"post"},
 		"/project/reference/generate":            {"post"},
 		"/project/list":                          {"get"},
 		"/project/detail":                        {"get"},
-		"/project/update":                        {"post"},
-		"/project/delete":                        {"post"},
+		"/project/update":                        {"put"},
+		"/project/delete":                        {"delete"},
 		"/projects/{project_id}/generation-runs": {"get", "post"},
 		"/generation-runs/{run_id}":              {"get"},
 		"/generation-runs/{run_id}/cancel":       {"post"},
@@ -57,7 +97,8 @@ func TestOpenAPIIncludesHTTPContract(t *testing.T) {
 		"/asset/save":                            {"post"},
 		"/asset/copy":                            {"post"},
 		"/asset/rollback":                        {"post"},
-		"/asset/update":                          {"post"},
+		"/asset/update":                          {"put"},
+		"/asset/delete":                          {"delete"},
 	}
 	for path, methods := range expectedMethods {
 		operation, ok := document.Paths[path]
@@ -71,6 +112,12 @@ func TestOpenAPIIncludesHTTPContract(t *testing.T) {
 			}
 			if method == "post" && len(operation.Post) == 0 {
 				t.Errorf("expected POST operation for %q", path)
+			}
+			if method == "put" && len(operation.Put) == 0 {
+				t.Errorf("expected PUT operation for %q", path)
+			}
+			if method == "delete" && len(operation.Delete) == 0 {
+				t.Errorf("expected DELETE operation for %q", path)
 			}
 		}
 	}

@@ -14,8 +14,14 @@ import { Route as DocsRouteImport } from './routes/docs'
 import { Route as GenerateRouteImport } from './routes/generate'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as DocsIndexRouteImport } from './routes/docs.index'
+import { Route as DocsArticleIdRouteImport } from './routes/docs.$articleId'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
+import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
 import { Route as ProjectsNewRouteImport } from './routes/projects.new'
+import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects.$projectId.index'
+import { Route as ProjectsProjectIdAssetsAssetIdRouteImport } from './routes/projects.$projectId.assets.$assetId'
+import { Route as ProjectsProjectIdAssetsNewKindRouteImport } from './routes/projects.$projectId.assets.new.$kind'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -42,9 +48,24 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DocsIndexRoute = DocsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsArticleIdRoute = DocsArticleIdRouteImport.update({
+  id: '/$articleId',
+  path: '/$articleId',
+  getParentRoute: () => DocsRoute,
+} as any)
 const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => ProjectsRoute,
+} as any)
+const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
+  id: '/$projectId',
+  path: '/$projectId',
   getParentRoute: () => ProjectsRoute,
 } as any)
 const ProjectsNewRoute = ProjectsNewRouteImport.update({
@@ -52,33 +73,66 @@ const ProjectsNewRoute = ProjectsNewRouteImport.update({
   path: '/new',
   getParentRoute: () => ProjectsRoute,
 } as any)
+const ProjectsProjectIdIndexRoute = ProjectsProjectIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ProjectsProjectIdRoute,
+} as any)
+const ProjectsProjectIdAssetsAssetIdRoute =
+  ProjectsProjectIdAssetsAssetIdRouteImport.update({
+    id: '/assets/$assetId',
+    path: '/assets/$assetId',
+    getParentRoute: () => ProjectsProjectIdRoute,
+  } as any)
+const ProjectsProjectIdAssetsNewKindRoute =
+  ProjectsProjectIdAssetsNewKindRouteImport.update({
+    id: '/assets/new/$kind',
+    path: '/assets/new/$kind',
+    getParentRoute: () => ProjectsProjectIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/docs': typeof DocsRoute
+  '/docs': typeof DocsRouteWithChildren
   '/generate': typeof GenerateRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRoute
+  '/docs/$articleId': typeof DocsArticleIdRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/new': typeof ProjectsNewRoute
+  '/docs/': typeof DocsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
+  '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
+  '/projects/$projectId/assets/$assetId': typeof ProjectsProjectIdAssetsAssetIdRoute
+  '/projects/$projectId/assets/new/$kind': typeof ProjectsProjectIdAssetsNewKindRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/docs': typeof DocsRoute
   '/generate': typeof GenerateRoute
   '/settings': typeof SettingsRoute
+  '/docs/$articleId': typeof DocsArticleIdRoute
   '/projects/new': typeof ProjectsNewRoute
+  '/docs': typeof DocsIndexRoute
   '/projects': typeof ProjectsIndexRoute
+  '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
+  '/projects/$projectId/assets/$assetId': typeof ProjectsProjectIdAssetsAssetIdRoute
+  '/projects/$projectId/assets/new/$kind': typeof ProjectsProjectIdAssetsNewKindRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/docs': typeof DocsRoute
+  '/docs': typeof DocsRouteWithChildren
   '/generate': typeof GenerateRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRoute
+  '/docs/$articleId': typeof DocsArticleIdRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/new': typeof ProjectsNewRoute
+  '/docs/': typeof DocsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
+  '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
+  '/projects/$projectId/assets/$assetId': typeof ProjectsProjectIdAssetsAssetIdRoute
+  '/projects/$projectId/assets/new/$kind': typeof ProjectsProjectIdAssetsNewKindRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -88,10 +142,26 @@ export interface FileRouteTypes {
     | '/generate'
     | '/projects'
     | '/settings'
+    | '/docs/$articleId'
+    | '/projects/$projectId'
     | '/projects/new'
+    | '/docs/'
     | '/projects/'
+    | '/projects/$projectId/'
+    | '/projects/$projectId/assets/$assetId'
+    | '/projects/$projectId/assets/new/$kind'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/docs' | '/generate' | '/settings' | '/projects/new' | '/projects'
+  to:
+    | '/'
+    | '/generate'
+    | '/settings'
+    | '/docs/$articleId'
+    | '/projects/new'
+    | '/docs'
+    | '/projects'
+    | '/projects/$projectId'
+    | '/projects/$projectId/assets/$assetId'
+    | '/projects/$projectId/assets/new/$kind'
   id:
     | '__root__'
     | '/'
@@ -99,13 +169,19 @@ export interface FileRouteTypes {
     | '/generate'
     | '/projects'
     | '/settings'
+    | '/docs/$articleId'
+    | '/projects/$projectId'
     | '/projects/new'
+    | '/docs/'
     | '/projects/'
+    | '/projects/$projectId/'
+    | '/projects/$projectId/assets/$assetId'
+    | '/projects/$projectId/assets/new/$kind'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  DocsRoute: typeof DocsRoute
+  DocsRoute: typeof DocsRouteWithChildren
   GenerateRoute: typeof GenerateRoute
   ProjectsRoute: typeof ProjectsRouteWithChildren
   SettingsRoute: typeof SettingsRoute
@@ -148,11 +224,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/docs/': {
+      id: '/docs/'
+      path: '/'
+      fullPath: '/docs/'
+      preLoaderRoute: typeof DocsIndexRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/$articleId': {
+      id: '/docs/$articleId'
+      path: '/$articleId'
+      fullPath: '/docs/$articleId'
+      preLoaderRoute: typeof DocsArticleIdRouteImport
+      parentRoute: typeof DocsRoute
+    }
     '/projects/': {
       id: '/projects/'
       path: '/'
       fullPath: '/projects/'
       preLoaderRoute: typeof ProjectsIndexRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
+    '/projects/$projectId': {
+      id: '/projects/$projectId'
+      path: '/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof ProjectsProjectIdRouteImport
       parentRoute: typeof ProjectsRoute
     }
     '/projects/new': {
@@ -162,15 +259,65 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsNewRouteImport
       parentRoute: typeof ProjectsRoute
     }
+    '/projects/$projectId/': {
+      id: '/projects/$projectId/'
+      path: '/'
+      fullPath: '/projects/$projectId/'
+      preLoaderRoute: typeof ProjectsProjectIdIndexRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
+    '/projects/$projectId/assets/$assetId': {
+      id: '/projects/$projectId/assets/$assetId'
+      path: '/assets/$assetId'
+      fullPath: '/projects/$projectId/assets/$assetId'
+      preLoaderRoute: typeof ProjectsProjectIdAssetsAssetIdRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
+    '/projects/$projectId/assets/new/$kind': {
+      id: '/projects/$projectId/assets/new/$kind'
+      path: '/assets/new/$kind'
+      fullPath: '/projects/$projectId/assets/new/$kind'
+      preLoaderRoute: typeof ProjectsProjectIdAssetsNewKindRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
   }
 }
 
+interface DocsRouteChildren {
+  DocsArticleIdRoute: typeof DocsArticleIdRoute
+  DocsIndexRoute: typeof DocsIndexRoute
+}
+
+const DocsRouteChildren: DocsRouteChildren = {
+  DocsArticleIdRoute: DocsArticleIdRoute,
+  DocsIndexRoute: DocsIndexRoute,
+}
+
+const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
+
+interface ProjectsProjectIdRouteChildren {
+  ProjectsProjectIdIndexRoute: typeof ProjectsProjectIdIndexRoute
+  ProjectsProjectIdAssetsAssetIdRoute: typeof ProjectsProjectIdAssetsAssetIdRoute
+  ProjectsProjectIdAssetsNewKindRoute: typeof ProjectsProjectIdAssetsNewKindRoute
+}
+
+const ProjectsProjectIdRouteChildren: ProjectsProjectIdRouteChildren = {
+  ProjectsProjectIdIndexRoute: ProjectsProjectIdIndexRoute,
+  ProjectsProjectIdAssetsAssetIdRoute: ProjectsProjectIdAssetsAssetIdRoute,
+  ProjectsProjectIdAssetsNewKindRoute: ProjectsProjectIdAssetsNewKindRoute,
+}
+
+const ProjectsProjectIdRouteWithChildren =
+  ProjectsProjectIdRoute._addFileChildren(ProjectsProjectIdRouteChildren)
+
 interface ProjectsRouteChildren {
+  ProjectsProjectIdRoute: typeof ProjectsProjectIdRouteWithChildren
   ProjectsNewRoute: typeof ProjectsNewRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
 }
 
 const ProjectsRouteChildren: ProjectsRouteChildren = {
+  ProjectsProjectIdRoute: ProjectsProjectIdRouteWithChildren,
   ProjectsNewRoute: ProjectsNewRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
 }
@@ -181,7 +328,7 @@ const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  DocsRoute: DocsRoute,
+  DocsRoute: DocsRouteWithChildren,
   GenerateRoute: GenerateRoute,
   ProjectsRoute: ProjectsRouteWithChildren,
   SettingsRoute: SettingsRoute,

@@ -11,9 +11,13 @@ import type {
   AssetRecordForKind,
   SceneryAssetRecord,
   TilesetAssetRecord,
-  UiAssetRecord,
+  UISetAssetRecord,
   AudioAssetRecord,
 } from "../types";
+import type {
+  ObjectAssetRecord,
+  SpriteAssetRecordData,
+} from "../types/asset-record";
 import { isAssetRecordForKind } from "../record.validation";
 
 const swordsmanPrototype: CharacterSpriteSheet = {
@@ -82,7 +86,7 @@ function createSwordsmanAnimations(
   );
 }
 
-const characterAnimationsByAssetId: Record<string, CharacterAnimation[]> = {
+const spriteAnimationsByAssetId: Record<string, CharacterAnimation[]> = {
   swordsman: [
     ...createSwordsmanAnimations("idle", "Idle", {
       front: 12,
@@ -115,19 +119,37 @@ const characterAnimationsByAssetId: Record<string, CharacterAnimation[]> = {
       128,
     ),
   ],
+  "alchemy-table": [
+    createPngAnimation(
+      "idle",
+      "Idle",
+      "/assets/object/Alchemy_Table_02-Sheet.png",
+      8,
+      48,
+      64,
+    ),
+  ],
 };
 
-const characterPrototypesByAssetId: Record<string, CharacterSpriteSheet> = {
+const spritePrototypesByAssetId: Record<string, CharacterSpriteSheet> = {
   swordsman: swordsmanPrototype,
   knight: knightPrototype,
+  "alchemy-table": {
+    format: "png-sprite-sheet",
+    imageUrl: "/assets/object/Alchemy_Table_02-Sheet.png",
+    frameWidth: 48,
+    frameHeight: 64,
+    columns: 1,
+    rows: 1,
+  },
 };
 
-function getCharacterDefaultSourceId(assetId: string) {
+function getSpriteDefaultSourceId(assetId: string) {
   return assetId.split("-copy-", 1)[0] ?? assetId;
 }
 
-function createFallbackCharacterPrototype(
-  asset: Pick<ProjectAsset, "canvasSize">,
+function createFallbackSpritePrototype(
+  asset: Pick<ProjectAsset, "canvasSize" | "thumbnailUrl">,
 ): CharacterSpriteSheet {
   const dimensions = asset.canvasSize.match(/(\d+)\D+(\d+)/);
   const frameWidth = Number(dimensions?.[1]) || 64;
@@ -135,7 +157,7 @@ function createFallbackCharacterPrototype(
 
   return {
     format: "png-sprite-sheet",
-    imageUrl: "",
+    imageUrl: asset.thumbnailUrl ?? "",
     frameWidth,
     frameHeight,
     columns: 1,
@@ -143,7 +165,7 @@ function createFallbackCharacterPrototype(
   };
 }
 
-function createFallbackCharacterAnimations(): CharacterAnimation[] {
+function createFallbackSpriteAnimations(): CharacterAnimation[] {
   return [{ kind: "clip", id: "idle", label: "Idle", frameCount: 1 }];
 }
 
@@ -272,22 +294,19 @@ export function createDefaultAssetRecord<K extends AssetKind>(
 ): AssetRecordForKind<K> {
   const base = { prompt: asset.description };
 
-  if (kind === "character" || kind === "object") {
-    const sourceId = getCharacterDefaultSourceId(asset.id);
+  if (kind === "character") {
     return {
       mode: "character",
       ...base,
-      character: {
-        prototype: structuredClone(
-          characterPrototypesByAssetId[sourceId] ??
-            createFallbackCharacterPrototype(asset),
-        ),
-        animations: structuredClone(
-          characterAnimationsByAssetId[sourceId] ??
-            createFallbackCharacterAnimations(),
-        ),
-        nodePositions: {},
-      },
+      character: createDefaultSpriteAssetRecordData(asset),
+    } as AssetRecordForKind<K>;
+  }
+
+  if (kind === "object") {
+    return {
+      mode: "object",
+      ...base,
+      object: createDefaultSpriteAssetRecordData(asset),
     } as AssetRecordForKind<K>;
   }
 
@@ -312,11 +331,11 @@ export function createDefaultAssetRecord<K extends AssetKind>(
     } as AssetRecordForKind<K>;
   }
 
-  if (kind === "ui") {
+  if (kind === "uiset") {
     return {
-      mode: "ui",
+      mode: "uiset",
       ...base,
-      ui: {
+      uiset: {
         components: [
           {
             id: "panel",
@@ -366,6 +385,11 @@ export function mergeAssetRecord<K extends AssetKind>(
         fallback as CharacterAssetRecord,
         record as CharacterAssetRecord,
       ) as AssetRecordForKind<K>;
+    case "object":
+      return mergeObjectRecord(
+        fallback as ObjectAssetRecord,
+        record as ObjectAssetRecord,
+      ) as AssetRecordForKind<K>;
     case "scenery":
       return mergeSceneryRecord(
         record as SceneryAssetRecord,
@@ -374,13 +398,32 @@ export function mergeAssetRecord<K extends AssetKind>(
       return mergeTilesetRecord(
         record as TilesetAssetRecord,
       ) as AssetRecordForKind<K>;
-    case "ui":
-      return mergeUiRecord(record as UiAssetRecord) as AssetRecordForKind<K>;
+    case "uiset":
+      return mergeUISetRecord(
+        record as UISetAssetRecord,
+      ) as AssetRecordForKind<K>;
     case "audio":
       return mergeAudioRecord(
         record as AudioAssetRecord,
       ) as AssetRecordForKind<K>;
   }
+}
+
+function createDefaultSpriteAssetRecordData(
+  asset: ProjectAsset,
+): SpriteAssetRecordData {
+  const sourceId = getSpriteDefaultSourceId(asset.id);
+
+  return {
+    prototype: structuredClone(
+      spritePrototypesByAssetId[sourceId] ??
+        createFallbackSpritePrototype(asset),
+    ),
+    animations: structuredClone(
+      spriteAnimationsByAssetId[sourceId] ?? createFallbackSpriteAnimations(),
+    ),
+    nodePositions: {},
+  };
 }
 
 function migrateLegacyTilesetRecord(
@@ -426,14 +469,31 @@ function mergeCharacterRecord(
   return {
     mode: "character",
     prompt: saved.prompt,
-    character: {
-      prototype: saved.character.prototype ?? fallback.character.prototype,
-      animations:
-        saved.character.animations ?? fallback.character.animations ?? [],
-      nodePositions: {
-        ...fallback.character.nodePositions,
-        ...saved.character.nodePositions,
-      },
+    character: mergeSpriteAssetRecordData(fallback.character, saved.character),
+  };
+}
+
+function mergeObjectRecord(
+  fallback: ObjectAssetRecord,
+  saved: ObjectAssetRecord,
+): ObjectAssetRecord {
+  return {
+    mode: "object",
+    prompt: saved.prompt,
+    object: mergeSpriteAssetRecordData(fallback.object, saved.object),
+  };
+}
+
+function mergeSpriteAssetRecordData(
+  fallback: SpriteAssetRecordData,
+  saved: SpriteAssetRecordData,
+): SpriteAssetRecordData {
+  return {
+    prototype: saved.prototype ?? fallback.prototype,
+    animations: saved.animations ?? fallback.animations ?? [],
+    nodePositions: {
+      ...fallback.nodePositions,
+      ...saved.nodePositions,
     },
   };
 }
@@ -457,11 +517,11 @@ function mergeTilesetRecord(saved: TilesetAssetRecord): TilesetAssetRecord {
   };
 }
 
-function mergeUiRecord(saved: UiAssetRecord): UiAssetRecord {
+function mergeUISetRecord(saved: UISetAssetRecord): UISetAssetRecord {
   return {
-    mode: "ui",
+    mode: "uiset",
     prompt: saved.prompt,
-    ui: { components: saved.ui.components },
+    uiset: { components: saved.uiset.components },
   };
 }
 

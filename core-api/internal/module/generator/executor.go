@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 
 	"github.com/1024XEngineer/Holonic-Asset/internal/module/generator/imageclient"
 	imageprocessor "github.com/1024XEngineer/Holonic-Asset/internal/module/processor/image"
@@ -25,10 +24,18 @@ type AssetWriter interface {
 	UpdateAnimationFrames(context.Context, uint, uint, []assetdomain.Frame) error
 }
 
+// ReferenceStore is the object-storage boundary used by the worker. It keeps
+// storage-specific credentials and URL formats out of generation logic.
+type ReferenceStore interface {
+	ResolveReference(context.Context, string) (string, error)
+	PersistReference(context.Context, string) (string, error)
+}
+
 type executor struct {
-	images    imageclient.ImageGenerationService
-	processor imageprocessor.Processor
-	assets    AssetWriter
+	images     imageclient.ImageGenerationService
+	processor  imageprocessor.Processor
+	assets     AssetWriter
+	references ReferenceStore
 }
 
 // NewExecutor creates the image-to-asset workflow used by task handlers.
@@ -36,8 +43,15 @@ func NewExecutor(
 	images imageclient.ImageGenerationService,
 	processor imageprocessor.Processor,
 	assets AssetWriter,
+	references ...ReferenceStore,
 ) Executor {
-	return &executor{images: images, processor: processor, assets: assets}
+	var referenceStore ReferenceStore
+	if len(references) > 0 {
+		referenceStore = references[0]
+	}
+	return &executor{
+		images: images, processor: processor, assets: assets, references: referenceStore,
+	}
 }
 
 type ExecutionResult struct {
@@ -88,11 +102,7 @@ func (e *executor) generateCharacterPrototype(
 	ctx context.Context,
 	payload CreateCharacterPrototypePayload,
 ) (json.RawMessage, error) {
-	viewMode, err := parseViewMode(payload.Perspective)
-	if err != nil {
-		return nil, err
-	}
-	directionCount, err := parseDirectionCount(payload.DirectionCount)
+	perspective, err := parsePerspective(payload.Perspective)
 	if err != nil {
 		return nil, err
 	}
@@ -106,14 +116,18 @@ func (e *executor) generateCharacterPrototype(
 	if err != nil {
 		return nil, err
 	}
+	resources, err := e.prototypeResources(ctx, generated)
+	if err != nil {
+		return nil, err
+	}
 	value, err := newPrototypeAsset(
 		assetdomain.AssetTypeCharacter,
 		payload.AssetName,
 		payload.ProjectID,
 		payload.CreativeBrief,
-		viewMode,
-		directionCount,
-		prototypeResources(generated),
+		perspective,
+		perspective.CharacterDirectionCount(),
+		resources,
 	)
 	if err != nil {
 		return nil, err
@@ -132,7 +146,7 @@ func (e *executor) generateObjectPrototype(
 	ctx context.Context,
 	payload CreateObjectPrototypePayload,
 ) (json.RawMessage, error) {
-	viewMode, err := parseViewMode(payload.Perspective)
+	perspective, err := parsePerspective(payload.Perspective)
 	if err != nil {
 		return nil, err
 	}
@@ -146,14 +160,18 @@ func (e *executor) generateObjectPrototype(
 	if err != nil {
 		return nil, err
 	}
+	resources, err := e.prototypeResources(ctx, generated)
+	if err != nil {
+		return nil, err
+	}
 	value, err := newPrototypeAsset(
 		assetdomain.AssetTypeObject,
 		payload.AssetName,
 		payload.ProjectID,
 		payload.CreativeBrief,
-		viewMode,
+		perspective,
 		0,
-		prototypeResources(generated),
+		resources,
 	)
 	if err != nil {
 		return nil, err
@@ -179,6 +197,10 @@ func (e *executor) generateAnimation(
 	if err != nil {
 		return nil, err
 	}
+	frames, err := e.animationFrames(ctx, generated)
+	if err != nil {
+		return nil, err
+	}
 
 	animationID, err := e.assets.CreateAnimation(ctx, assetID, name)
 	if err != nil {
@@ -187,7 +209,7 @@ func (e *executor) generateAnimation(
 	if animationID == 0 {
 		return nil, fmt.Errorf("generator: create animation for asset %d: empty result", assetID)
 	}
-	if err := e.assets.UpdateAnimationFrames(ctx, assetID, animationID, animationFrames(generated)); err != nil {
+	if err := e.assets.UpdateAnimationFrames(ctx, assetID, animationID, frames); err != nil {
 		return nil, fmt.Errorf(
 			"generator: update asset %d animation %d frames: %w",
 			assetID,
@@ -207,6 +229,13 @@ func (e *executor) generateImages(
 ) (*imageclient.GenerateResult, error) {
 	references := []string(nil)
 	if reference != "" {
+		if e.references != nil {
+			resolved, err := e.references.ResolveReference(ctx, reference)
+			if err != nil {
+				return nil, fmt.Errorf("generator: resolve %s reference: %w", taskType, err)
+			}
+			reference = resolved
+		}
 		references = []string{reference}
 	}
 	result, err := e.images.Generate(ctx, &imageclient.GenerateRequest{
@@ -268,12 +297,12 @@ func newPrototypeAsset(
 	name string,
 	projectID uint,
 	description string,
-	viewMode assetdomain.ViewMode,
+	perspective assetdomain.Perspective,
 	directionCount uint,
 	prototype []assetdomain.ImageResource,
 ) (*assetdomain.Asset, error) {
 	content := assetdomain.NewAssetContent(assetType)
-	content.ViewMode = viewMode
+	content.Perspective = perspective
 	prototypeValue := assetdomain.Prototype(prototype)
 	content.Prototype = &prototypeValue
 	content.DirectionCount = directionCount
@@ -290,49 +319,50 @@ func newPrototypeAsset(
 	}, nil
 }
 
-func parseViewMode(perspective string) (assetdomain.ViewMode, error) {
-	switch perspective {
-	case string(assetdomain.ViewModeSideOn):
-		return assetdomain.ViewModeSideOn, nil
-	case string(assetdomain.ViewModeTopDown):
-		return assetdomain.ViewModeTopDown, nil
-	default:
+func parsePerspective(perspective string) (assetdomain.Perspective, error) {
+	value := assetdomain.Perspective(perspective)
+	if !value.Valid() {
 		return "", fmt.Errorf("generator: invalid perspective %q", perspective)
 	}
+	return value, nil
 }
 
-func parseDirectionCount(directionCount string) (uint, error) {
-	if directionCount == "" {
-		return 0, nil
-	}
-	value, err := strconv.ParseUint(directionCount, 10, 0)
-	if err != nil {
-		return 0, fmt.Errorf("generator: parse direction count %q: %w", directionCount, err)
-	}
-	switch value {
-	case 1, 2, 4, 8:
-		return uint(value), nil
-	default:
-		return 0, fmt.Errorf("generator: invalid direction count %q", directionCount)
-	}
-}
-
-func prototypeResources(result *imageclient.GenerateResult) []assetdomain.ImageResource {
+func (e *executor) prototypeResources(
+	ctx context.Context,
+	result *imageclient.GenerateResult,
+) ([]assetdomain.ImageResource, error) {
 	resources := make([]assetdomain.ImageResource, len(result.Images))
 	for index, image := range result.Images {
 		url := generatedImageDataURL(image)
+		if e.references != nil {
+			objectKey, err := e.references.PersistReference(ctx, url)
+			if err != nil {
+				return nil, fmt.Errorf("generator: persist prototype image %d: %w", index+1, err)
+			}
+			url = objectKey
+		}
 		resources[index] = assetdomain.ImageResource{ID: uint(index + 1), URL: &url}
 	}
-	return resources
+	return resources, nil
 }
 
-func animationFrames(result *imageclient.GenerateResult) []assetdomain.Frame {
+func (e *executor) animationFrames(
+	ctx context.Context,
+	result *imageclient.GenerateResult,
+) ([]assetdomain.Frame, error) {
 	frames := make([]assetdomain.Frame, len(result.Images))
 	for index, image := range result.Images {
 		url := generatedImageDataURL(image)
+		if e.references != nil {
+			objectKey, err := e.references.PersistReference(ctx, url)
+			if err != nil {
+				return nil, fmt.Errorf("generator: persist animation frame %d: %w", index+1, err)
+			}
+			url = objectKey
+		}
 		frames[index] = assetdomain.Frame{ID: uint(index + 1), URL: &url}
 	}
-	return frames
+	return frames, nil
 }
 
 func generatedImageDataURL(image imageclient.GeneratedImage) string {

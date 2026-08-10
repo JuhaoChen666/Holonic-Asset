@@ -11,6 +11,23 @@ import (
 	domain "github.com/1024XEngineer/Holonic-Asset/internal/module/workspace/project"
 )
 
+type referenceResolverStub struct {
+	resolved map[string]string
+	calls    []string
+	err      error
+}
+
+func (s *referenceResolverStub) ResolveReference(_ context.Context, reference string) (string, error) {
+	s.calls = append(s.calls, reference)
+	if s.err != nil {
+		return "", s.err
+	}
+	if value, ok := s.resolved[reference]; ok {
+		return value, nil
+	}
+	return "signed:" + reference, nil
+}
+
 type projectManagerStub struct {
 	updateErr          error
 	updateContext      context.Context
@@ -20,15 +37,20 @@ type projectManagerStub struct {
 	generate           *domain.Project
 	generatedReference string
 	generateCtx        context.Context
+	detail             *domain.Project
+	projects           []*domain.Project
 }
 
 func (*projectManagerStub) Create(context.Context, *domain.Project) error { return nil }
 
-func (*projectManagerStub) ListByUID(context.Context, uint) ([]*domain.Project, error) {
-	return []*domain.Project{}, nil
+func (s *projectManagerStub) ListByUID(context.Context, uint) ([]*domain.Project, error) {
+	return s.projects, nil
 }
 
-func (*projectManagerStub) GetDetail(context.Context, uint) (*domain.Project, error) {
+func (s *projectManagerStub) GetDetail(context.Context, uint) (*domain.Project, error) {
+	if s.detail != nil {
+		return s.detail, nil
+	}
 	return &domain.Project{}, nil
 }
 
@@ -78,7 +100,7 @@ func TestUpdateForwardsOnlyProvidedFields(t *testing.T) {
 	if stub.update.Reference == nil || *stub.update.Reference != reference {
 		t.Fatalf("expected reference %q, got %+v", reference, stub.update.Reference)
 	}
-	if stub.update.Name != nil || stub.update.GameType != nil || stub.update.ViewType != nil || stub.update.Style != nil {
+	if stub.update.Name != nil || stub.update.GameType != nil || stub.update.Perspective != nil || stub.update.Style != nil {
 		t.Fatalf("expected omitted fields to remain nil, got %+v", stub.update)
 	}
 	if response.Code != dto.SuccessCode || response.Message != dto.SuccessMessage {
@@ -111,10 +133,10 @@ func TestGenerateReferenceForwardsProjectDefinitionAndReturnsReference(t *testin
 	request := dto.GenerateProjectReferenceRequest{
 		Name:           "Prototype",
 		GameType:       domain.GameTypeRPG,
-		ViewType:       domain.ViewTypeTopDown,
+		Perspective:    domain.PerspectiveTopDown,
 		TargetPlatform: domain.PlatformTypePC,
 		Description:    "A small village adventure",
-		Reference:      "optional-reference",
+		Reference:      "https://media.example/current-reference.png",
 		Style:          "warm pixel art",
 	}
 	response, err := projectHandler.GenerateReference(ctx, request)
@@ -131,7 +153,7 @@ func TestGenerateReferenceForwardsProjectDefinitionAndReturnsReference(t *testin
 		t.Fatalf("expected reference generation not to require a user ID, got %d", stub.generate.UserID)
 	}
 	if stub.generate.Reference != request.Reference {
-		t.Fatalf("expected reference to be forwarded, got %q", stub.generate.Reference)
+		t.Fatalf("expected reference %q to be forwarded, got %q", request.Reference, stub.generate.Reference)
 	}
 	if response.Code != dto.SuccessCode || response.Message != dto.SuccessMessage {
 		t.Fatalf("unexpected response envelope: %+v", response)
@@ -148,7 +170,7 @@ func TestGenerateReferencePropagatesServiceError(t *testing.T) {
 	response, err := projectHandler.GenerateReference(context.Background(), dto.GenerateProjectReferenceRequest{
 		Name:           "Prototype",
 		GameType:       domain.GameType(""),
-		ViewType:       domain.ViewTypeTopDown,
+		Perspective:    domain.PerspectiveTopDown,
 		TargetPlatform: domain.PlatformTypePC,
 	})
 	if !errors.Is(err, wantErr) {
@@ -156,5 +178,25 @@ func TestGenerateReferencePropagatesServiceError(t *testing.T) {
 	}
 	if response != (dto.SuccessResponse[dto.GenerateProjectReferenceResponse]{}) {
 		t.Fatalf("expected an empty response on error, got %+v", response)
+	}
+}
+
+func TestProjectDetailResolvesPersistedObjectKeyWithoutChangingResponseContract(t *testing.T) {
+	resolver := &referenceResolverStub{resolved: map[string]string{
+		"projects/7/reference.png": "https://cdn.example/projects/7/reference.png?e=123&token=signed",
+	}}
+	projectHandler := handler.NewProjectHandler(&projectManagerStub{
+		detail: &domain.Project{ID: 7, UserID: 101, Name: "Starbound", Reference: "projects/7/reference.png"},
+	}, resolver)
+
+	response, err := projectHandler.GetDetail(context.Background(), dto.ProjectDetailRequest{ProjectID: 7})
+	if err != nil {
+		t.Fatalf("get project detail: %v", err)
+	}
+	if response.Data.Project.Reference != "https://cdn.example/projects/7/reference.png?e=123&token=signed" {
+		t.Fatalf("expected signed reference URL, got %q", response.Data.Project.Reference)
+	}
+	if len(resolver.calls) != 1 || resolver.calls[0] != "projects/7/reference.png" {
+		t.Fatalf("unexpected resolver calls: %v", resolver.calls)
 	}
 }

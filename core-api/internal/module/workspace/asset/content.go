@@ -1,16 +1,22 @@
 package asset
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
 
-type ViewMode string
+	perspectivedomain "github.com/1024XEngineer/Holonic-Asset/internal/module/workspace/perspective"
+)
+
+type Perspective = perspectivedomain.Perspective
 
 const (
-	ViewModeSideOn  ViewMode = "side_on"
-	ViewModeTopDown ViewMode = "top_down"
+	PerspectiveTopDown   = perspectivedomain.TopDown
+	PerspectiveSideOn    = perspectivedomain.SideOn
+	PerspectiveIsometric = perspectivedomain.Isometric
 )
 
 type AssetContent struct {
-	ViewMode       ViewMode       `json:"viewMode,omitempty"`
+	Perspective    Perspective    `json:"perspective,omitempty"`
 	DirectionCount uint           `json:"directionCount,omitempty"`
 	Prototype      *Prototype     `json:"prototype,omitempty"`
 	Animations     []Animation    `json:"animations,omitempty"`
@@ -78,13 +84,26 @@ func (a Asset) DecodeContent() (AssetContent, error) {
 	if err := json.Unmarshal(a.Content, &content); err != nil {
 		return AssetContent{}, err
 	}
+	if err := validateContentPerspective(content.Perspective); err != nil {
+		return AssetContent{}, err
+	}
 	return content, nil
 }
 
 func EncodeContent(content AssetContent) (json.RawMessage, error) {
+	if err := validateContentPerspective(content.Perspective); err != nil {
+		return nil, err
+	}
 	value, err := json.Marshal(content)
 	if err != nil {
 		return nil, err
 	}
 	return json.RawMessage(value), nil
+}
+
+func validateContentPerspective(perspective Perspective) error {
+	if perspective != "" && !perspective.Valid() {
+		return fmt.Errorf("asset: invalid perspective %q", perspective)
+	}
+	return nil
 }

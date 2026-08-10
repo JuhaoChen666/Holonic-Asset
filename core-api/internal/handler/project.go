@@ -12,11 +12,20 @@ import (
 )
 
 type ProjectHandler struct {
-	manager domain.Manager
+	manager    domain.Manager
+	references referenceResolver
 }
 
-func NewProjectHandler(manager domain.Manager) *ProjectHandler {
-	return &ProjectHandler{manager: manager}
+type referenceResolver interface {
+	ResolveReference(context.Context, string) (string, error)
+}
+
+func NewProjectHandler(manager domain.Manager, references ...referenceResolver) *ProjectHandler {
+	var resolver referenceResolver
+	if len(references) > 0 {
+		resolver = references[0]
+	}
+	return &ProjectHandler{manager: manager, references: resolver}
 }
 
 func (h *ProjectHandler) Create(
@@ -27,7 +36,7 @@ func (h *ProjectHandler) Create(
 		UserID:         request.UserID,
 		Name:           request.Name,
 		GameType:       request.GameType,
-		ViewType:       request.ViewType,
+		Perspective:    request.Perspective,
 		TargetPlatform: request.TargetPlatform,
 		Description:    request.Description,
 		Reference:      request.Reference,
@@ -46,7 +55,7 @@ func (h *ProjectHandler) GenerateReference(
 	project := &domain.Project{
 		Name:           request.Name,
 		GameType:       request.GameType,
-		ViewType:       request.ViewType,
+		Perspective:    request.Perspective,
 		TargetPlatform: request.TargetPlatform,
 		Description:    request.Description,
 		Reference:      request.Reference,
@@ -72,7 +81,10 @@ func (h *ProjectHandler) ListByUID(
 
 	response := make([]*dto.ProjectResponse, len(projects))
 	for i, project := range projects {
-		response[i] = projectResponse(project)
+		response[i], err = h.projectResponse(c, project)
+		if err != nil {
+			return dto.SuccessResponse[dto.ListProjectsResponse]{}, err
+		}
 	}
 	return dto.NewTypedSuccessResponse(dto.ListProjectsResponse{Projects: response}), nil
 }
@@ -85,7 +97,11 @@ func (h *ProjectHandler) GetDetail(
 	if err != nil {
 		return dto.SuccessResponse[dto.ProjectDetailResponse]{}, projectHandlerError(err)
 	}
-	return dto.NewTypedSuccessResponse(dto.ProjectDetailResponse{Project: projectResponse(project)}), nil
+	response, err := h.projectResponse(c, project)
+	if err != nil {
+		return dto.SuccessResponse[dto.ProjectDetailResponse]{}, err
+	}
+	return dto.NewTypedSuccessResponse(dto.ProjectDetailResponse{Project: response}), nil
 }
 
 func (h *ProjectHandler) Update(
@@ -96,7 +112,7 @@ func (h *ProjectHandler) Update(
 		ID:             request.ProjectID,
 		Name:           request.Name,
 		GameType:       request.GameType,
-		ViewType:       request.ViewType,
+		Perspective:    request.Perspective,
 		TargetPlatform: request.TargetPlatform,
 		Description:    request.Description,
 		Reference:      request.Reference,
@@ -118,21 +134,32 @@ func (h *ProjectHandler) Delete(
 	return dto.NewTypedSuccessResponse(dto.DeleteProjectResponse{Success: true}), nil
 }
 
-func projectResponse(project *domain.Project) *dto.ProjectResponse {
+func (h *ProjectHandler) projectResponse(
+	ctx context.Context,
+	project *domain.Project,
+) (*dto.ProjectResponse, error) {
 	if project == nil {
-		return nil
+		return nil, domain.ErrProjectNotFound
+	}
+	reference := project.Reference
+	if h.references != nil && reference != "" {
+		resolved, err := h.references.ResolveReference(ctx, reference)
+		if err != nil {
+			return nil, err
+		}
+		reference = resolved
 	}
 	return &dto.ProjectResponse{
 		UserID:         project.UserID,
 		ID:             project.ID,
 		Name:           project.Name,
 		GameType:       project.GameType,
-		ViewType:       project.ViewType,
+		Perspective:    project.Perspective,
 		TargetPlatform: project.TargetPlatform,
 		Description:    project.Description,
-		Reference:      project.Reference,
+		Reference:      reference,
 		Style:          project.Style,
-	}
+	}, nil
 }
 
 func projectHandlerError(err error) error {

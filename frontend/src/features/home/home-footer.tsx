@@ -15,8 +15,8 @@ export function HomeFooter() {
             Holonic Asset
           </p>
           <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-            AI-powered game asset creation for characters, environments, UI, and
-            consistent project libraries.
+            AI-powered game asset creation for characters, environments, UI Set
+            assets, and consistent project libraries.
           </p>
         </div>
         <nav aria-label="Footer navigation" className="flex flex-wrap gap-5">
@@ -24,9 +24,6 @@ export function HomeFooter() {
             <Link
               key={to}
               to={to}
-              search={
-                to === "/projects" ? { project: undefined, q: "" } : undefined
-              }
               className="text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:rounded-sm focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
             >
               {label}

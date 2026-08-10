@@ -10,8 +10,10 @@ import (
 )
 
 const (
-	referenceSize    = "auto"
-	referenceQuality = "high"
+	referenceSize               = "auto"
+	referenceQuality            = "high"
+	referenceRegenerationPrompt = `REFERENCE REGENERATION
+The supplied reference image is the user's current result and they are dissatisfied with it. Generate a clearly new alternative instead of reproducing the same composition. Keep only useful high-level cues such as visual language, palette relationships, sprite scale, and material treatment. Change the composition, layout, staging, silhouettes, and scene details while following the current project brief.`
 )
 
 var (
@@ -32,17 +34,40 @@ type Manager interface {
 type manager struct {
 	store       Store
 	imageClient imageclient.ImageGenerationService
+	references  ReferenceStore
+}
+
+// ReferenceStore is the storage boundary used for persisted image references.
+// Implementations may sign private object URLs and persist generated data URLs.
+type ReferenceStore interface {
+	ResolveReference(context.Context, string) (string, error)
+	PersistReference(context.Context, string) (string, error)
 }
 
 // NewManager constructs project use cases. The image service is optional so
 // CRUD-only callers do not need to initialize the generation provider.
-func NewManager(store Store, imageService imageclient.ImageGenerationService) Manager {
-	return &manager{store: store, imageClient: imageService}
+func NewManager(
+	store Store,
+	imageService imageclient.ImageGenerationService,
+	references ...ReferenceStore,
+) Manager {
+	var referenceStore ReferenceStore
+	if len(references) > 0 {
+		referenceStore = references[0]
+	}
+	return &manager{store: store, imageClient: imageService, references: referenceStore}
 }
 
 func (m *manager) Create(ctx context.Context, project *Project) error {
 	if err := project.ValidateCreate(); err != nil {
 		return err
+	}
+	if m.references != nil && project.Reference != "" {
+		reference, err := m.references.PersistReference(ctx, project.Reference)
+		if err != nil {
+			return fmt.Errorf("project: persist reference: %w", err)
+		}
+		project.Reference = reference
 	}
 	return m.store.Insert(ctx, project)
 }
@@ -65,6 +90,13 @@ func (m *manager) Update(ctx context.Context, update *ProjectUpdate) error {
 	if err := update.Validate(); err != nil {
 		return err
 	}
+	if m.references != nil && update.Reference != nil && *update.Reference != "" {
+		reference, err := m.references.PersistReference(ctx, *update.Reference)
+		if err != nil {
+			return fmt.Errorf("project: persist reference: %w", err)
+		}
+		update.Reference = &reference
+	}
 	return m.store.Update(ctx, update)
 }
 
@@ -83,14 +115,29 @@ func (m *manager) GenerateReference(ctx context.Context, project *Project) (stri
 		return "", ErrImageServiceRequired
 	}
 
+	reference := strings.TrimSpace(project.Reference)
+	prompt := buildReferencePrompt(project)
+	if reference != "" {
+		prompt += "\n\n" + referenceRegenerationPrompt
+	}
+
 	request := &imageclient.GenerateRequest{
-		Prompt: buildReferencePrompt(project),
+		Prompt: prompt,
 		Size:   referenceSize,
 		Params: imageclient.Params{
 			"quality": referenceQuality,
 		},
 	}
-	if reference := referenceForGeneration(project.Reference); reference != "" {
+	if reference != "" {
+		// Refresh private URLs before sending them to the image provider so an
+		// expiring frontend URL does not become stale during generation.
+		if m.references != nil {
+			resolved, err := m.references.ResolveReference(ctx, reference)
+			if err != nil {
+				return "", fmt.Errorf("project: resolve reference: %w", err)
+			}
+			reference = resolved
+		}
 		request.ReferenceImages = []string{reference}
 	}
 
@@ -102,7 +149,19 @@ func (m *manager) GenerateReference(ctx context.Context, project *Project) (stri
 		return "", ErrReferenceRequired
 	}
 
-	return referenceDataURL(generated.Images[0]), nil
+	result := referenceDataURL(generated.Images[0])
+	if m.references == nil {
+		return result, nil
+	}
+	objectKey, err := m.references.PersistReference(ctx, result)
+	if err != nil {
+		return "", fmt.Errorf("project: persist generated reference: %w", err)
+	}
+	resolved, err := m.references.ResolveReference(ctx, objectKey)
+	if err != nil {
+		return "", fmt.Errorf("project: resolve generated reference: %w", err)
+	}
+	return resolved, nil
 }
 
 func referenceDataURL(image imageclient.GeneratedImage) string {
@@ -117,7 +176,7 @@ var _ Manager = (*manager)(nil)
 
 func buildReferencePrompt(project *Project) string {
 	gameType := gameTypePrompt(project.GameType)
-	viewType := viewTypePrompt(project.ViewType)
+	perspective := perspectivePrompt(project.Perspective)
 	platform := platformPrompt(project.TargetPlatform)
 	gameplayPlan := gameplayPlanPrompt(project)
 	hudPlan := hudPlanPrompt(project)
@@ -129,7 +188,7 @@ func buildReferencePrompt(project *Project) string {
 USER PROJECT
 - Name: %q
 - Game type: %s
-- Camera: %s
+- Perspective: %s
 - Platform: %s
 - Art style: %q
 - User description: %q
@@ -146,12 +205,12 @@ AUTHENTIC PIXEL ART
 - Use a restrained palette of about 24-32 colours. Do not use smooth gradients, sub-pixel detail, anti-aliasing, 3D, vector-smooth shapes, painterly brushwork, glossy CGI, bloom, fog, lens effects, or depth-of-field.
 - Keep characters and entities at normal gameplay sprite scale. Do not turn the player into a large illustration. Prefer a few clearly readable sprites and props over many tiny muddled objects. Leave quiet space so the playfield reads immediately.
 
-GAMEPLAY SCREEN UI
+GAMEPLAY SCREEN UI SET
 %s
 
 NO GENERATED TEXT
 - Do not draw any words, letters, numerals, names, dialogue, tooltips, button labels, item labels, signs, logos, watermarks, or pseudo-text anywhere in the image. The project name is metadata and must not appear in the picture.
-- Never imitate text with broken glyphs or decorative gibberish. Use icon-only indicators, simple bars, empty slots, and pictograms when interface feedback is necessary. Any real UI text and numbers will be rendered later by the game's UI layer with a real pixel font.
+- Never imitate text with broken glyphs or decorative gibberish. Use icon-only indicators, simple bars, empty slots, and pictograms when interface feedback is necessary. Any real UI Set text and numbers will be rendered later by the game's interface layer with a real pixel font.
 
 FINAL CHECK
 Return one coherent playable screen with clear walkable or interactable spaces, consistent pixel scale, and a calm useful gameplay state. Remove anything that does not support the user's described game. The final image must contain zero generated text or pseudo-text.
@@ -160,7 +219,7 @@ REFERENCE IMAGE
 If a reference image is supplied, use it only for visual language, palette relationships, sprite scale, or material treatment. Do not copy its words, logos, HUD layout, or accidental artifacts. Keep the user's game type and described activity in control of the composition.`,
 		promptValue(project.Name, "Untitled game project"),
 		gameType,
-		viewType,
+		perspective,
 		platform,
 		style,
 		description,
@@ -177,18 +236,6 @@ func hudPlanPrompt(*Project) string {
 	return `Treat the interface as part of the described gameplay, not as a showcase overlay. Do not add a menu, inventory, equipment, loadout, or permanent side panel unless the user explicitly asks for it. If the user asks for a specific interface, show only that requested interface in a compact active-gameplay state, keep the playfield visible, and use iconography or empty slots instead of readable words, letters, numbers, or fake glyphs. Otherwise keep menus closed with no permanent side panel and use only small icon-only indicators that the described moment actually needs, such as a selected-object icon or an unlabeled health/resource bar. Do not draw counters, labels, dialogue, or interaction text. Keep the HUD small and subordinate to the playfield; if the game does not need it, show no HUD.`
 }
 
-// referenceForGeneration only forwards references in formats accepted by the
-// image provider. Bare base64 values do not contain enough format information.
-func referenceForGeneration(reference string) string {
-	reference = strings.TrimSpace(reference)
-	if strings.HasPrefix(reference, "data:image/") ||
-		strings.HasPrefix(reference, "https://") ||
-		strings.HasPrefix(reference, "http://") {
-		return reference
-	}
-	return ""
-}
-
 func gameTypePrompt(gameType GameType) string {
 	label := strings.TrimSpace(string(gameType))
 	if label == "" {
@@ -197,16 +244,16 @@ func gameTypePrompt(gameType GameType) string {
 	return fmt.Sprintf("the user-described game type %q; rely on the user description for its actual activity", label)
 }
 
-func viewTypePrompt(viewType ViewType) string {
-	switch viewType {
-	case ViewTypeTopDown:
-		return "top-down 2D pixel-art gameplay camera with a readable tile-based playfield, clear paths, interactables, and spatial relationships"
-	case ViewTypeSideView:
-		return "side-view 2D pixel-art gameplay camera with layered parallax backgrounds, a clear traversal line, readable platforms, and strong sprite silhouettes"
-	case ViewTypeIsometric:
-		return "2D isometric pixel-art gameplay camera with a consistent pixel grid, clear depth, walkable tiles, elevation, and tactical readability"
+func perspectivePrompt(perspective Perspective) string {
+	switch perspective {
+	case PerspectiveTopDown:
+		return "Top-Down 2D pixel-art gameplay perspective with a readable tile-based playfield, clear paths, interactables, and spatial relationships"
+	case PerspectiveSideOn:
+		return "Side-On 2D pixel-art gameplay perspective with layered parallax backgrounds, a clear traversal line, readable platforms, and strong sprite silhouettes"
+	case PerspectiveIsometric:
+		return "Isometric 2D pixel-art gameplay perspective with a consistent pixel grid, clear depth, walkable tiles, elevation, and tactical readability"
 	default:
-		return "choose the 2D pixel-art gameplay camera best suited to the brief and keep it consistent with an authentic playable screenshot"
+		return "choose the 2D pixel-art gameplay perspective best suited to the brief and keep it consistent with an authentic playable screenshot"
 	}
 }
 

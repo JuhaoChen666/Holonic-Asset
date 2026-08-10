@@ -30,6 +30,10 @@ func (e *Engine) Create(ctx context.Context, request *Request) (RunID, error) {
 	if err != nil {
 		return 0, err
 	}
+	payloadValue, err = e.prepareTaskPayload(ctx, request.ProjectID, payloadValue)
+	if err != nil {
+		return 0, err
+	}
 
 	payload, err := json.Marshal(payloadValue)
 	if err != nil {
@@ -44,6 +48,45 @@ func (e *Engine) Create(ctx context.Context, request *Request) (RunID, error) {
 	return RunID(taskID), err
 }
 
+func (e *Engine) prepareTaskPayload(ctx context.Context, projectID uint, payload any) (any, error) {
+	prepare := func(reference string) (string, error) {
+		if reference == "" && e.projects != nil && projectID != 0 {
+			project, err := e.projects.GetDetail(ctx, projectID)
+			if err != nil {
+				return "", fmt.Errorf("generator: load project %d reference: %w", projectID, err)
+			}
+			if project != nil {
+				reference = project.Reference
+			}
+		}
+		if e.references == nil || reference == "" {
+			return reference, nil
+		}
+		resolved, err := e.references.PersistReference(ctx, reference)
+		if err != nil {
+			return "", fmt.Errorf("generator: persist reference: %w", err)
+		}
+		return resolved, nil
+	}
+
+	switch value := payload.(type) {
+	case CreateCharacterPrototypePayload:
+		var err error
+		value.Reference, err = prepare(value.Reference)
+		return value, err
+	case CreateObjectPrototypePayload:
+		var err error
+		value.Reference, err = prepare(value.Reference)
+		return value, err
+	case CreateTileSetPayload:
+		var err error
+		value.Reference, err = prepare(value.Reference)
+		return value, err
+	default:
+		return payload, nil
+	}
+}
+
 func buildTaskPayload(request *Request) (any, error) {
 	if request == nil {
 		return nil, fmt.Errorf("generator: request is required")
@@ -56,8 +99,7 @@ func buildTaskPayload(request *Request) (any, error) {
 			return nil, err
 		}
 		payload.ProjectID = request.ProjectID
-		payload.CreativeBrief = valueOrFallback(payload.CreativeBrief, request.Prompt)
-		payload.Reference = valueOrFallback(payload.Reference, firstReference(request.ReferenceMediaIDs))
+		payload.CreativeBrief = request.CreativeBrief
 		return payload, nil
 	case GenerateObjectProtoType:
 		payload := CreateObjectPrototypePayload{}
@@ -65,8 +107,7 @@ func buildTaskPayload(request *Request) (any, error) {
 			return nil, err
 		}
 		payload.ProjectID = request.ProjectID
-		payload.CreativeBrief = valueOrFallback(payload.CreativeBrief, request.Prompt)
-		payload.Reference = valueOrFallback(payload.Reference, firstReference(request.ReferenceMediaIDs))
+		payload.CreativeBrief = request.CreativeBrief
 		return payload, nil
 	case GenerateAnimation:
 		payload := CreateAnimationPayload{}
@@ -74,7 +115,7 @@ func buildTaskPayload(request *Request) (any, error) {
 			return nil, err
 		}
 		payload.ProjectID = request.ProjectID
-		payload.CreativeBrief = valueOrFallback(payload.CreativeBrief, request.Prompt)
+		payload.CreativeBrief = request.CreativeBrief
 		if payload.ParentID == 0 && request.AssetID != nil {
 			payload.ParentID = *request.AssetID
 		}
@@ -85,8 +126,7 @@ func buildTaskPayload(request *Request) (any, error) {
 			return nil, err
 		}
 		payload.ProjectID = request.ProjectID
-		payload.CreativeBrief = valueOrFallback(payload.CreativeBrief, request.Prompt)
-		payload.Reference = valueOrFallback(payload.Reference, firstReference(request.ReferenceMediaIDs))
+		payload.CreativeBrief = request.CreativeBrief
 		if payload.TileNum == 0 {
 			payload.TileNum = uint(len(payload.TileDescriptions))
 		}
@@ -112,20 +152,6 @@ func decodeParameters(request *Request, payload any) error {
 		return fmt.Errorf("generator: decode %s parameters: %w", request.Kind, err)
 	}
 	return nil
-}
-
-func valueOrFallback(value, fallback string) string {
-	if value != "" {
-		return value
-	}
-	return fallback
-}
-
-func firstReference(references []string) string {
-	if len(references) == 0 {
-		return ""
-	}
-	return references[0]
 }
 
 func (e *Engine) List(ctx context.Context, query *RunListQuery) (*RunListPage, error) {
@@ -157,9 +183,6 @@ func (e *Engine) List(ctx context.Context, query *RunListQuery) (*RunListPage, e
 		filter.ExcludeTaskTypes = ProjectLevelTaskTypes()
 	}
 
-	if e.reader == nil {
-		return &RunListPage{Runs: []Run{}}, nil
-	}
 	return e.reader.ListRuns(ctx, filter)
 }
 
@@ -173,28 +196,11 @@ func (e *Engine) Get(ctx context.Context, runID RunID) (*Run, error) {
 		return nil, err
 	}
 
-	var scope struct {
-		ProjectID uint  `json:"project_id"`
-		AssetID   *uint `json:"asset_id"`
-		ParentID  *uint `json:"parent_id"`
-	}
-	if err := json.Unmarshal(message.Payload, &scope); err != nil {
+	run, err := taskToRun(message)
+	if err != nil {
 		return nil, err
 	}
-	assetID := scope.ParentID
-	if assetID == nil {
-		assetID = scope.AssetID
-	}
-
-	return &Run{
-		ID:        RunID(message.ID),
-		ProjectID: scope.ProjectID,
-		AssetID:   assetID,
-		Kind:      TaskType(message.Type),
-		Status:    message.Status,
-		Result:    message.Result,
-		Error:     message.Error,
-	}, nil
+	return &run, nil
 }
 
 func (e *Engine) Cancel(ctx context.Context, runID RunID) error {

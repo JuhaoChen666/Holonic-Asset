@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -23,6 +24,29 @@ type imageGenerationServiceStub struct {
 type imageProcessorStub struct {
 	events *[]string
 	err    error
+}
+
+type referenceStoreStub struct {
+	resolved   []string
+	persisted  []string
+	resolveErr error
+	persistErr error
+}
+
+func (s *referenceStoreStub) ResolveReference(_ context.Context, reference string) (string, error) {
+	s.resolved = append(s.resolved, reference)
+	if s.resolveErr != nil {
+		return "", s.resolveErr
+	}
+	return "signed:" + reference, nil
+}
+
+func (s *referenceStoreStub) PersistReference(_ context.Context, reference string) (string, error) {
+	s.persisted = append(s.persisted, reference)
+	if s.persistErr != nil {
+		return "", s.persistErr
+	}
+	return fmt.Sprintf("uploads/generated-%d.png", len(s.persisted)), nil
 }
 
 func (s *imageProcessorStub) RemoveBackground(
@@ -55,6 +79,16 @@ func (s *imageProcessorStub) Verify(
 	_ *imageprocessor.VerifyRequest,
 ) (*imageprocessor.VerificationReport, error) {
 	return &imageprocessor.VerificationReport{Passed: true}, nil
+}
+
+func (s *imageProcessorStub) SplitImage(
+	_ context.Context,
+	_ *imageprocessor.SplitImageRequest,
+) (*imageprocessor.SplitImageResult, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &imageprocessor.SplitImageResult{}, nil
 }
 
 func (s *imageGenerationServiceStub) Generate(
@@ -159,8 +193,7 @@ func TestExecutorGeneratesCharacterPrototypeBeforeCreatingAsset(t *testing.T) {
 		"asset_name":"hero",
 		"creative_brief":"pixel knight",
 		"canvas_size":"64x64",
-		"perspective":"top_down",
-		"direction_count":"4",
+		"perspective":"Top-Down",
 		"reference":"https://cdn.example/reference.png",
 		"project_id":11
 	}`)
@@ -191,11 +224,83 @@ func TestExecutorGeneratesCharacterPrototypeBeforeCreatingAsset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode character content: %v", err)
 	}
-	if content.ViewMode != assetdomain.ViewModeTopDown || content.DirectionCount != 4 {
+	if content.Perspective != assetdomain.PerspectiveTopDown || content.DirectionCount != 4 {
 		t.Fatalf("unexpected character content: %+v", content)
 	}
 	assertPrototypeResources(t, assets.characterAsset)
 	assertExecutionResult(t, result, generator.ExecutionResult{AssetID: 41})
+}
+
+func TestExecutorResolvesReferencesAtExecutionAndPersistsGeneratedImagesAsKeys(t *testing.T) {
+	events := []string{}
+	images := &imageGenerationServiceStub{events: &events, result: generatedImages()}
+	assets := &generationAssetWriterStub{events: &events}
+	references := &referenceStoreStub{}
+	executor := generator.NewExecutor(images, &imageProcessorStub{events: &events}, assets, references)
+	payload := json.RawMessage(`{
+		"asset_name":"hero",
+		"creative_brief":"pixel knight",
+		"canvas_size":"64x64",
+		"perspective":"Top-Down",
+		"reference":"projects/7/reference.png",
+		"project_id":11
+	}`)
+
+	if _, err := executor.Generate(context.Background(), generator.GenerateCharacterProtoType, payload); err != nil {
+		t.Fatalf("generate prototype: %v", err)
+	}
+	if len(references.resolved) != 1 || references.resolved[0] != "projects/7/reference.png" {
+		t.Fatalf("expected execution-time reference resolution, got %v", references.resolved)
+	}
+	if len(references.persisted) != 2 || references.persisted[0] != "data:image/png;base64,first" || references.persisted[1] != "data:image/png;base64,second" {
+		t.Fatalf("expected generated images to be persisted as data URLs, got %v", references.persisted)
+	}
+	content, err := assets.characterAsset.DecodeContent()
+	if err != nil {
+		t.Fatalf("decode generated asset: %v", err)
+	}
+	if *(*content.Prototype)[0].URL != "uploads/generated-1.png" || *(*content.Prototype)[1].URL != "uploads/generated-2.png" {
+		t.Fatalf("expected object keys in generated asset: %+v", content.Prototype)
+	}
+}
+
+func TestExecutorDerivesCharacterDirectionCountFromPerspective(t *testing.T) {
+	tests := []struct {
+		perspective string
+		want        assetdomain.Perspective
+		directions  uint
+	}{
+		{perspective: "Side-On", want: assetdomain.PerspectiveSideOn, directions: 2},
+		{perspective: "Top-Down", want: assetdomain.PerspectiveTopDown, directions: 4},
+		{perspective: "Isometric", want: assetdomain.PerspectiveIsometric, directions: 8},
+	}
+
+	for _, test := range tests {
+		t.Run(test.perspective, func(t *testing.T) {
+			events := []string{}
+			images := &imageGenerationServiceStub{events: &events, result: generatedImages()}
+			assets := &generationAssetWriterStub{events: &events}
+			executor := generator.NewExecutor(images, &imageProcessorStub{events: &events}, assets)
+			payload := json.RawMessage(fmt.Sprintf(`{
+				"asset_name":"hero",
+				"creative_brief":"pixel knight",
+				"canvas_size":"64x64",
+				"perspective":%q,
+				"project_id":11
+			}`, test.perspective))
+
+			if _, err := executor.Generate(context.Background(), generator.GenerateCharacterProtoType, payload); err != nil {
+				t.Fatalf("generate character prototype: %v", err)
+			}
+			content, err := assets.characterAsset.DecodeContent()
+			if err != nil {
+				t.Fatalf("decode character content: %v", err)
+			}
+			if content.Perspective != test.want || content.DirectionCount != test.directions {
+				t.Fatalf("unexpected character content: %+v", content)
+			}
+		})
+	}
 }
 
 func TestExecutorGeneratesObjectPrototypeBeforeCreatingAsset(t *testing.T) {
@@ -207,7 +312,7 @@ func TestExecutorGeneratesObjectPrototypeBeforeCreatingAsset(t *testing.T) {
 		"asset_name":"chest",
 		"creative_brief":"wooden chest",
 		"canvas_size":"128x128",
-		"perspective":"top_down",
+		"perspective":"Isometric",
 		"project_id":12
 	}`)
 
@@ -228,6 +333,13 @@ func TestExecutorGeneratesObjectPrototypeBeforeCreatingAsset(t *testing.T) {
 	if assets.objectAsset == nil || assets.objectAsset.Name != "chest" ||
 		assets.objectAsset.ProjectID != 12 || assets.objectAsset.Type != assetdomain.AssetTypeObject {
 		t.Fatalf("unexpected object asset: %+v", assets.objectAsset)
+	}
+	content, err := assets.objectAsset.DecodeContent()
+	if err != nil {
+		t.Fatalf("decode object content: %v", err)
+	}
+	if content.Perspective != assetdomain.PerspectiveIsometric {
+		t.Fatalf("unexpected object perspective: %q", content.Perspective)
 	}
 	assertPrototypeResources(t, assets.objectAsset)
 	assertExecutionResult(t, result, generator.ExecutionResult{AssetID: 42})
@@ -300,49 +412,25 @@ func TestExecutorDoesNotMutateAssetsWhenImageGenerationFails(t *testing.T) {
 	}
 }
 
-func TestExecutorRejectsInvalidPrototypeEnumsBeforeImageGeneration(t *testing.T) {
-	tests := []struct {
-		name    string
-		payload json.RawMessage
-	}{
-		{
-			name: "perspective",
-			payload: json.RawMessage(`{
-				"asset_name":"hero",
-				"creative_brief":"pixel knight",
-				"canvas_size":"64x64",
-				"perspective":"top-down",
-				"direction_count":"4",
-				"project_id":11
-			}`),
-		},
-		{
-			name: "direction_count",
-			payload: json.RawMessage(`{
-				"asset_name":"hero",
-				"creative_brief":"pixel knight",
-				"canvas_size":"64x64",
-				"perspective":"top_down",
-				"direction_count":"3",
-				"project_id":11
-			}`),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			events := []string{}
-			images := &imageGenerationServiceStub{events: &events, result: generatedImages()}
-			assets := &generationAssetWriterStub{events: &events}
-			executor := generator.NewExecutor(images, &imageProcessorStub{events: &events}, assets)
+func TestExecutorRejectsInvalidPrototypePerspectiveBeforeImageGeneration(t *testing.T) {
+	events := []string{}
+	images := &imageGenerationServiceStub{events: &events, result: generatedImages()}
+	assets := &generationAssetWriterStub{events: &events}
+	executor := generator.NewExecutor(images, &imageProcessorStub{events: &events}, assets)
+	payload := json.RawMessage(`{
+		"asset_name":"hero",
+		"creative_brief":"pixel knight",
+		"canvas_size":"64x64",
+		"perspective":"top-down",
+		"project_id":11
+	}`)
 
-			_, err := executor.Generate(context.Background(), generator.GenerateCharacterProtoType, tt.payload)
-			if err == nil {
-				t.Fatal("expected validation error")
-			}
-			if len(events) != 0 {
-				t.Fatalf("workflow should stop before side effects: %v", events)
-			}
-		})
+	_, err := executor.Generate(context.Background(), generator.GenerateCharacterProtoType, payload)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if len(events) != 0 {
+		t.Fatalf("workflow should stop before side effects: %v", events)
 	}
 }
 

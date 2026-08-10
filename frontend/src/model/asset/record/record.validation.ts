@@ -9,23 +9,17 @@ import type {
   AssetCanvasPosition,
   AssetRecord,
   AssetRecordForKind,
-  TilesetCell,
   TilesetItem,
-  UiComponent,
+  UISetComponent,
 } from "./types";
+import type { ItemTile } from "@/model/item-tile";
+import type { SpriteAssetRecordData } from "./types/asset-record";
 
 export function isAssetRecordForKind<K extends AssetKind>(
   kind: K,
   record: unknown,
 ): record is AssetRecordForKind<K> {
-  return isAssetRecord(record) && recordModeMatchesAssetKind(kind, record.mode);
-}
-
-function recordModeMatchesAssetKind(
-  kind: AssetKind,
-  mode: AssetRecord["mode"],
-) {
-  return kind === "object" ? mode === "character" : mode === kind;
+  return isAssetRecord(record) && record.mode === kind;
 }
 
 function isAssetRecord(value: unknown): value is AssetRecord {
@@ -33,13 +27,9 @@ function isAssetRecord(value: unknown): value is AssetRecord {
 
   switch (value.mode) {
     case "character":
-      return (
-        isPlainObject(value.character) &&
-        isCharacterSpriteSheet(value.character.prototype) &&
-        isNodePositions(value.character.nodePositions) &&
-        (value.character.animations === undefined ||
-          isCharacterAnimations(value.character.animations))
-      );
+      return isSpriteAssetRecordData(value.character);
+    case "object":
+      return isSpriteAssetRecordData(value.object);
     case "scenery":
       return (
         isPlainObject(value.scenery) &&
@@ -51,15 +41,27 @@ function isAssetRecord(value: unknown): value is AssetRecord {
         isFiniteNumber(value.tileset.gridSize) &&
         isArrayOf(value.tileset.items, isTilesetItem)
       );
-    case "ui":
+    case "uiset":
       return (
-        isPlainObject(value.ui) && isArrayOf(value.ui.components, isUiComponent)
+        isPlainObject(value.uiset) &&
+        isArrayOf(value.uiset.components, isUISetComponent)
       );
     case "audio":
       return isPlainObject(value.audio);
     default:
       return false;
   }
+}
+
+function isSpriteAssetRecordData(
+  value: unknown,
+): value is SpriteAssetRecordData {
+  return (
+    isPlainObject(value) &&
+    isCharacterSpriteSheet(value.prototype) &&
+    isNodePositions(value.nodePositions) &&
+    (value.animations === undefined || isCharacterAnimations(value.animations))
+  );
 }
 
 function isNodePositions(
@@ -149,11 +151,11 @@ function isTilesetItem(value: unknown): value is TilesetItem {
     typeof value.id === "string" &&
     typeof value.label === "string" &&
     (value.imageUrl === undefined || typeof value.imageUrl === "string") &&
-    isArrayOf(value.tiles, isTilesetCell)
+    isArrayOf(value.tiles, isItemTile)
   );
 }
 
-function isTilesetCell(value: unknown): value is TilesetCell {
+function isItemTile(value: unknown): value is ItemTile {
   return (
     Array.isArray(value) &&
     value.length === 2 &&
@@ -162,7 +164,7 @@ function isTilesetCell(value: unknown): value is TilesetCell {
   );
 }
 
-function isUiComponent(value: unknown): value is UiComponent {
+function isUISetComponent(value: unknown): value is UISetComponent {
   return (
     isPlainObject(value) &&
     typeof value.id === "string" &&

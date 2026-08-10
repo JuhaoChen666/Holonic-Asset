@@ -1,6 +1,5 @@
-export { useRecordQuery } from "./record.query";
+export { recordQueryOptions, useRecordQuery } from "./record.query";
 export { useSaveAssetRevisionMutation } from "./revision.mutation";
-export { assetRecordModeForKind } from "./record-mode";
 export type {
   AudioAssetKind,
   AudioAssetRecord,
@@ -11,9 +10,8 @@ export type {
   AssetRecordApi,
   AssetRecordForKind,
   AssetRecordSaveResult,
-  TilesetCell,
   TilesetItem,
-  UiComponent,
+  UISetComponent,
   AssetWorkspaceAsset,
   AssetWorkspaceData,
   AssetWorkspaceDataForKind,
@@ -21,8 +19,9 @@ export type {
   SaveAssetRecordInput,
   SceneryAssetKind,
   SceneryAssetRecord,
+  SpriteAssetRecordData,
   TilesetAssetKind,
   TilesetAssetRecord,
-  UiAssetKind,
-  UiAssetRecord,
+  UISetAssetKind,
+  UISetAssetRecord,
 } from "./types";
