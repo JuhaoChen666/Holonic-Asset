@@ -437,11 +437,17 @@ func TestAssetHandlerResolvesNestedObjectKeysOnlyForResponse(t *testing.T) {
 	frameURL := "uploads/frame.png"
 	tileURL := "uploads/tile.png"
 	layerResource := "projects/42/scenery/batch/layers/1.png"
+	componentURL := "projects/42/uisets/batch/components/0.png"
+	componentTexture, err := json.Marshal(domain.UITexture{URL: componentURL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	content, err := domain.EncodeContent(domain.AssetContent{
 		Prototype:  &domain.Prototype{{ID: 1, URL: &prototypeURL}},
 		Animations: []domain.Animation{{Frames: []domain.Frame{{ID: 2, URL: &frameURL}}}},
 		Items:      []domain.TileSetItem{{Tiles: []domain.Tile{{URL: &tileURL}}}},
 		Layers:     []domain.SceneryLayer{{ID: 1, Name: "Sky", Resource: layerResource}},
+		Components: []domain.UIComponent{{ID: 1, Name: "Heart", Texture: componentTexture}},
 	})
 	if err != nil {
 		t.Fatalf("encode asset content: %v", err)
@@ -461,7 +467,8 @@ func TestAssetHandlerResolvesNestedObjectKeysOnlyForResponse(t *testing.T) {
 	if *(*decoded.Prototype)[0].URL != "signed:uploads/prototype.png" ||
 		*decoded.Animations[0].Frames[0].URL != "signed:uploads/frame.png" ||
 		*decoded.Items[0].Tiles[0].URL != "signed:uploads/tile.png" ||
-		decoded.Layers[0].Resource != "signed:"+layerResource {
+		decoded.Layers[0].Resource != "signed:"+layerResource ||
+		decodeComponentTextureURL(t, decoded.Components[0].Texture) != "signed:"+componentURL {
 		t.Fatalf("unexpected resolved content: %+v", decoded)
 	}
 	var persisted domain.AssetContent
@@ -469,9 +476,19 @@ func TestAssetHandlerResolvesNestedObjectKeysOnlyForResponse(t *testing.T) {
 		t.Fatalf("decode original content: %v", err)
 	}
 	if *(*persisted.Prototype)[0].URL != prototypeURL || *persisted.Animations[0].Frames[0].URL != frameURL ||
-		*persisted.Items[0].Tiles[0].URL != tileURL || persisted.Layers[0].Resource != layerResource {
+		*persisted.Items[0].Tiles[0].URL != tileURL || persisted.Layers[0].Resource != layerResource ||
+		decodeComponentTextureURL(t, persisted.Components[0].Texture) != componentURL {
 		t.Fatalf("handler mutated persisted content: %+v", persisted)
 	}
+}
+
+func decodeComponentTextureURL(t *testing.T, raw json.RawMessage) string {
+	t.Helper()
+	var texture domain.UITexture
+	if err := json.Unmarshal(raw, &texture); err != nil {
+		t.Fatal(err)
+	}
+	return texture.URL
 }
 
 func TestAssetHandlerHidesAnimationGenerationWithoutReferenceResolver(t *testing.T) {
