@@ -260,6 +260,21 @@ func (h *Handler) transformAssetContentReferences(
 			}
 			content["layers"] = transformed
 		}
+		if value, ok := content["components"]; ok {
+			transformed, err := transformNestedReferenceObjectArray(
+				ctx,
+				value,
+				"components",
+				"texture",
+				"url",
+				operation,
+				transform,
+			)
+			if err != nil {
+				return nil, err
+			}
+			content["components"] = transformed
+		}
 	}
 
 	encoded, err := json.Marshal(content)
@@ -267,6 +282,57 @@ func (h *Handler) transformAssetContentReferences(
 		return nil, fmt.Errorf("handler: encode asset content: %w", err)
 	}
 	return json.RawMessage(encoded), nil
+}
+
+func transformNestedReferenceObjectArray(
+	ctx context.Context,
+	raw json.RawMessage,
+	field string,
+	nestedField string,
+	referenceField string,
+	operation string,
+	transform referenceTransform,
+) (json.RawMessage, error) {
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return raw, nil
+	}
+	var values []json.RawMessage
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return nil, fmt.Errorf("handler: decode asset content %s: %w", field, err)
+	}
+	for index, value := range values {
+		object, err := decodeJSONObject(value)
+		if err != nil {
+			return nil, fmt.Errorf("handler: decode asset content %s[%d]: %w", field, index, err)
+		}
+		nestedRaw, ok := object[nestedField]
+		if !ok || bytes.Equal(bytes.TrimSpace(nestedRaw), []byte("null")) {
+			continue
+		}
+		nested, err := decodeJSONObject(nestedRaw)
+		if err != nil {
+			continue // Legacy arbitrary texture JSON remains untouched.
+		}
+		if err := transformReferenceField(ctx, nested, referenceField, transform); err != nil {
+			return nil, fmt.Errorf(
+				"handler: %s asset content %s[%d].%s.%s: %w",
+				operation, field, index, nestedField, referenceField, err,
+			)
+		}
+		object[nestedField], err = json.Marshal(nested)
+		if err != nil {
+			return nil, fmt.Errorf("handler: encode asset content %s[%d].%s: %w", field, index, nestedField, err)
+		}
+		values[index], err = json.Marshal(object)
+		if err != nil {
+			return nil, fmt.Errorf("handler: encode asset content %s[%d]: %w", field, index, err)
+		}
+	}
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return nil, fmt.Errorf("handler: encode asset content %s: %w", field, err)
+	}
+	return encoded, nil
 }
 
 func stripAnimationGeneration(raw json.RawMessage) (json.RawMessage, error) {
