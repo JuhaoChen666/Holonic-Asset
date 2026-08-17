@@ -160,6 +160,7 @@ func (e *Engine) prepareTaskPayload(ctx context.Context, projectID uint, payload
 		value.ProjectContext = UISetProjectContext{
 			Name: strings.TrimSpace(project.Name), GameType: strings.TrimSpace(project.GameType),
 			TargetPlatform: strings.TrimSpace(string(project.TargetPlatform)), Description: strings.TrimSpace(project.Description),
+			Style: strings.TrimSpace(project.Style), Reference: strings.TrimSpace(project.Reference),
 		}
 		if e.references != nil && strings.TrimSpace(value.Reference) != "" {
 			value.Reference, err = e.references.PersistReference(ctx, value.Reference)

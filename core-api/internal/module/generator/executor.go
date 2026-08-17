@@ -46,6 +46,7 @@ type AssetWriter interface {
 	CreateObjectAsset(context.Context, *assetdomain.Asset) (uint, error)
 	CreateSceneryAsset(context.Context, *assetdomain.Asset) (uint, error)
 	CreateTileSetAsset(context.Context, *assetdomain.Asset) (uint, error)
+	CreateUISetAsset(context.Context, *assetdomain.Asset) (uint, error)
 	CreateAnimation(context.Context, uint, assetdomain.Animation) (uint, error)
 	UpdateAnimationFrames(context.Context, uint, uint, []assetdomain.Frame) error
 	CreateRecord(context.Context, *assetdomain.AssetRecord, uint) (*assetdomain.AssetRecord, error)
@@ -203,8 +204,8 @@ func (e *executor) Generate(
 		}
 		return e.editTileSetItem(ctx, request)
 	case GenerateUISet:
-		if e.llm == nil {
-			return nil, ErrLLMServiceRequired
+		if err := e.requireUISetDependencies(); err != nil {
+			return nil, err
 		}
 		request := CreateUISetPayload{}
 		if err := decodeExecutionPayload(taskType, payload, &request); err != nil {
@@ -215,6 +216,9 @@ func (e *executor) Generate(
 		}
 		return e.generateUISet(ctx, request)
 	case EditUISetComponents:
+		if err := e.requireUISetDependencies(); err != nil {
+			return nil, err
+		}
 		request := EditUISetComponentsPayload{}
 		if err := decodeExecutionPayload(taskType, payload, &request); err != nil {
 			return nil, err
@@ -222,10 +226,35 @@ func (e *executor) Generate(
 		if err := validateEditUISetComponentsPayload(&request); err != nil {
 			return nil, err
 		}
-		return nil, nil // Component regeneration is implemented in UI Set phase 6.
+		return e.editUISetComponents(ctx, request)
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedTaskType, taskType)
 	}
+}
+
+func (e *executor) requireUISetDependencies() error {
+	if e.images == nil {
+		return ErrImageServiceRequired
+	}
+	if e.processor == nil {
+		return ErrImageProcessorRequired
+	}
+	if e.assets == nil {
+		return ErrAssetWriterRequired
+	}
+	if e.projects == nil {
+		return ErrProjectReaderRequired
+	}
+	if e.llm == nil {
+		return ErrLLMServiceRequired
+	}
+	if e.references == nil {
+		return ErrResourceStoreRequired
+	}
+	if e.resources == nil {
+		return ErrResourceStoreRequired
+	}
+	return nil
 }
 
 func (e *executor) requireSceneryDependencies() error {

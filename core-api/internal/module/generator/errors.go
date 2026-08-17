@@ -28,5 +28,6 @@ var (
 	ErrInvalidSceneryPlan     = errors.New("generator: invalid scenery plan")
 	ErrInvalidSceneryLayout   = errors.New("generator: invalid scenery layout")
 	ErrInvalidUISetPlan       = errors.New("generator: invalid UI Set component plan")
+	ErrInvalidUISetLayout     = errors.New("generator: invalid UI Set component layout")
 	ErrResourceStoreRequired  = errors.New("generator: resource store is required")
 )
