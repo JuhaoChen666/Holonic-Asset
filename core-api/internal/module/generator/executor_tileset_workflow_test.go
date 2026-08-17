@@ -347,6 +347,10 @@ func (s *tileSetWorkflowAssets) CreateTileSetAsset(_ context.Context, value *ass
 	return s.asset.ID, nil
 }
 
+func (*tileSetWorkflowAssets) CreateUISetAsset(context.Context, *assetdomain.Asset) (uint, error) {
+	return 0, fmt.Errorf("unexpected UI Set creation")
+}
+
 func (*tileSetWorkflowAssets) CreateAnimation(context.Context, uint, assetdomain.Animation) (uint, error) {
 	return 0, fmt.Errorf("unexpected animation creation")
 }

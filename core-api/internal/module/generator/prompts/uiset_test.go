@@ -10,7 +10,7 @@ import (
 func TestUISetPlanPromptDefinesComponentUnitWithoutTiles(t *testing.T) {
 	prompt := prompts.UISetPlan(prompts.UISetPlanInput{
 		AssetName: "HUD", CreativeBrief: "compact combat HUD", Style: "pixel brass",
-		ProjectName: "Moon Forge", GameType: "RPG", TargetPlatform: "PC",
+		ProjectName: "Moon Forge", GameType: "RPG", TargetPlatform: "PC", ProjectStyle: "moonlit pixel art",
 		ProjectDescription: "tactical adventure", Width: 1280, Height: 720,
 		Components: []prompts.UISetComponentInput{
 			{Index: 0, Name: "Health Bar", Description: "top-left player health"},
@@ -18,10 +18,10 @@ func TestUISetPlanPromptDefinesComponentUnitWithoutTiles(t *testing.T) {
 		},
 	})
 	for _, required := range []string{
-		"Return exactly one entry for every requested Component", "positive integer pixel width and height",
-		"one complete independently generated Component image", "has no Tiles, Tile size, grid, shape, footprint",
-		"Do not choose positions", `<canvas width="1280" height="720" />`,
-		`<component index="1"><name>Pause Button</name><description>small icon-only control</description></component>`,
+		"requested Components are mandatory seeds", "add useful inferred Components", "Project art style",
+		"all meaningful visual states", "bar is an engine-composited frame", "one horizontal sprite strip",
+		"has no Tiles, Tile size, grid, shape, footprint", `<canvas width="1280" height="720" />`,
+		`<component request_index="1"><name>Pause Button</name><description>small icon-only control</description></component>`,
 	} {
 		if !strings.Contains(prompt, required) {
 			t.Fatalf("UI Set prompt omitted %q: %s", required, prompt)

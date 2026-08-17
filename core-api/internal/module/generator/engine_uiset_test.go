@@ -17,7 +17,7 @@ func TestCreateBuildsSelfContainedUISetPayload(t *testing.T) {
 	tasks := &taskManagerStub{createID: 17}
 	projects := &projectReaderStub{project: &projectdomain.Project{
 		Name: "Moon Forge", GameType: "RPG", TargetPlatform: projectdomain.PlatformTypePC,
-		Description: "inventory-driven adventure",
+		Description: "inventory-driven adventure", Style: "moonlit pixel art", Reference: "projects/42/reference.png",
 	}}
 	references := &referenceStoreStub{}
 	engine := generator.NewEngine(tasks, nil, generator.EngineDependencies{Projects: projects, References: references})
@@ -38,6 +38,7 @@ func TestCreateBuildsSelfContainedUISetPayload(t *testing.T) {
 		payload.Dimensions.Width != 1024 || payload.Dimensions.Height != 768 || len(payload.Components) != 2 ||
 		payload.Components[0].Name != "Inventory Panel" || payload.Components[1].Description != "icon-only close control" ||
 		payload.ProjectContext.Name != "Moon Forge" || payload.ProjectContext.TargetPlatform != "PC" ||
+		payload.ProjectContext.Style != "moonlit pixel art" || payload.ProjectContext.Reference != "projects/42/reference.png" ||
 		payload.Reference != "uploads/generated-1.png" {
 		t.Fatalf("unexpected UI Set payload: %+v", payload)
 	}
