@@ -91,6 +91,41 @@ type UIComponent struct {
 	Metadata map[string]any  `json:"metadata,omitempty"`
 }
 
+// UITexture is the generated-resource shape stored inside UIComponent.Texture.
+// Texture remains RawMessage on UIComponent so legacy arbitrary texture data
+// continues to decode without a migration.
+type UITexture struct {
+	URL string `json:"url"`
+}
+
+// UIComponentState describes how one independently stored Component sprite
+// strip is consumed by a game engine.
+type UIComponentState struct {
+	Kind        string         `json:"kind"`
+	TextureSize Size           `json:"textureSize"`
+	Frames      []UIStateFrame `json:"frames"`
+	RuntimeFill *UIRuntimeFill `json:"runtimeFill,omitempty"`
+}
+
+type UIStateFrame struct {
+	Name string `json:"name"`
+	Rect UIRect `json:"rect"`
+}
+
+type UIRect struct {
+	X      uint `json:"x"`
+	Y      uint `json:"y"`
+	Width  uint `json:"width"`
+	Height uint `json:"height"`
+}
+
+// UIRuntimeFill marks bar interiors as engine-owned dynamic content. Generator
+// assets contain only the empty frame/background for these Components.
+type UIRuntimeFill struct {
+	Enabled bool   `json:"enabled"`
+	Axis    string `json:"axis"`
+}
+
 type SceneryLayer struct {
 	ID        uint            `json:"id"`
 	Name      string          `json:"name"`

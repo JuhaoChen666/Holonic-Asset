@@ -175,6 +175,7 @@ type generationAssetWriterStub struct {
 	characterAsset          *assetdomain.Asset
 	objectAsset             *assetdomain.Asset
 	sceneryAsset            *assetdomain.Asset
+	uiSetAsset              *assetdomain.Asset
 	createdRecord           *assetdomain.AssetRecord
 	recordVersion           uint
 	expectedVersion         uint
@@ -271,6 +272,17 @@ func (s *generationAssetWriterStub) CreateTileSetAsset(
 		return 0, s.err
 	}
 	return 43, nil
+}
+
+func (s *generationAssetWriterStub) CreateUISetAsset(
+	_ context.Context,
+	value *assetdomain.Asset,
+) (uint, error) {
+	s.uiSetAsset = value
+	if s.err != nil {
+		return 0, s.err
+	}
+	return 44, nil
 }
 
 func (s *generationAssetWriterStub) CreateAnimation(

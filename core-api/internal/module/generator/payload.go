@@ -265,6 +265,8 @@ type UISetProjectContext struct {
 	GameType       string `json:"game_type,omitempty"`
 	TargetPlatform string `json:"target_platform,omitempty"`
 	Description    string `json:"description,omitempty"`
+	Style          string `json:"style,omitempty"`
+	Reference      string `json:"reference,omitempty"`
 }
 
 // CreateUISetPayload is the self-contained input consumed by UI Set planning
@@ -296,12 +298,14 @@ type UISetComponentPlan struct {
 	Index       uint             `json:"index"`
 	Name        string           `json:"name"`
 	Description string           `json:"description"`
+	Kind        string           `json:"kind"`
+	States      []string         `json:"states"`
 	Size        assetdomain.Size `json:"size"`
 }
 
 const uiSetComponentPlanSchemaName = "uiset_component_plan"
 
-var uiSetComponentPlanJSONSchema = json.RawMessage(`{"type":"object","additionalProperties":false,"required":["components"],"properties":{"components":{"type":"array","minItems":1,"maxItems":64,"items":{"type":"object","additionalProperties":false,"required":["index","size"],"properties":{"index":{"type":"integer","minimum":0},"size":{"type":"object","additionalProperties":false,"required":["width","height"],"properties":{"width":{"type":"integer","minimum":1,"maximum":4096},"height":{"type":"integer","minimum":1,"maximum":4096}}}}}}}}`)
+var uiSetComponentPlanJSONSchema = json.RawMessage(`{"type":"object","additionalProperties":false,"required":["components"],"properties":{"components":{"type":"array","minItems":1,"maxItems":64,"items":{"type":"object","additionalProperties":false,"required":["request_index","name","description","kind","states","size"],"properties":{"request_index":{"type":"integer","minimum":-1,"maximum":63},"name":{"type":"string","minLength":1,"maxLength":200},"description":{"type":"string","minLength":1,"maxLength":2000},"kind":{"type":"string","enum":["panel","button","icon","indicator","bar","slot","cursor","badge","other"]},"states":{"type":"array","minItems":1,"maxItems":8,"items":{"type":"string","minLength":1,"maxLength":80}},"size":{"type":"object","additionalProperties":false,"required":["width","height"],"properties":{"width":{"type":"integer","minimum":1,"maximum":4096},"height":{"type":"integer","minimum":1,"maximum":4096}}}}}}}}`)
 
 const (
 	maxTileSetItems           = 64
@@ -319,6 +323,8 @@ const (
 	maxUISetCanvasEdge        = 4096
 	maxUISetComponentEdge     = 4096
 	maxUISetStyleLength       = 4000
+	maxUISetStates            = 8
+	maxUISetStateNameLength   = 80
 )
 
 // TileSetEditTarget identifies an occupied global Tileset cell. Execution
@@ -512,6 +518,7 @@ func validateCreateUISetPayload(payload *CreateUISetPayload) error {
 	if len(payload.Components) == 0 || len(payload.Components) > maxUISetComponents {
 		return invalidTaskPayload("components must contain between 1 and %d definitions", maxUISetComponents)
 	}
+	names := make(map[string]struct{}, len(payload.Components))
 	for index := range payload.Components {
 		component := &payload.Components[index]
 		prefix := fmt.Sprintf("components[%d]", index)
@@ -521,6 +528,11 @@ func validateCreateUISetPayload(payload *CreateUISetPayload) error {
 		if err := validateRequiredText(prefix+".description", component.Description, maxItemDescriptionLength); err != nil {
 			return err
 		}
+		nameKey := strings.ToLower(strings.TrimSpace(component.Name))
+		if _, duplicate := names[nameKey]; duplicate {
+			return invalidTaskPayload("%s.name duplicates another requested Component", prefix)
+		}
+		names[nameKey] = struct{}{}
 	}
 	return nil
 }
@@ -569,8 +581,12 @@ type uiSetComponentPlanResponse struct {
 }
 
 type uiSetComponentPlanCandidate struct {
-	Index *int                    `json:"index"`
-	Size  *uiSetPlanSizeCandidate `json:"size"`
+	RequestIndex *int                    `json:"request_index"`
+	Name         *string                 `json:"name"`
+	Description  *string                 `json:"description"`
+	Kind         *string                 `json:"kind"`
+	States       *[]string               `json:"states"`
+	Size         *uiSetPlanSizeCandidate `json:"size"`
 }
 
 type uiSetPlanSizeCandidate struct {
@@ -600,42 +616,105 @@ func decodeUISetComponentPlan(
 	if response.Components == nil {
 		return nil, invalid("components is required")
 	}
-	if len(*response.Components) != len(definitions) {
-		return nil, invalid(fmt.Sprintf("expected %d component plans, got %d", len(definitions), len(*response.Components)))
+	if len(*response.Components) < len(definitions) || len(*response.Components) > maxUISetComponents {
+		return nil, invalid(fmt.Sprintf("expected between %d and %d component plans, got %d", len(definitions), maxUISetComponents, len(*response.Components)))
 	}
 
-	plans := make([]UISetComponentPlan, len(definitions))
-	seen := make(map[int]struct{}, len(definitions))
+	plans := make([]UISetComponentPlan, len(*response.Components))
+	names := make(map[string]struct{}, len(*response.Components))
 	for planIndex, candidate := range *response.Components {
-		if candidate.Index == nil {
-			return nil, invalid(fmt.Sprintf("component plan %d index is required", planIndex))
+		if candidate.RequestIndex == nil {
+			return nil, invalid(fmt.Sprintf("component plan %d request_index is required", planIndex))
 		}
-		index := *candidate.Index
-		if index < 0 || index >= len(definitions) {
-			return nil, invalid(fmt.Sprintf("component plan %d has unknown index %d", planIndex, index))
+		requestIndex := *candidate.RequestIndex
+		if planIndex < len(definitions) {
+			if requestIndex != planIndex {
+				return nil, invalid(fmt.Sprintf("requested Component %d must remain at plan index %d", planIndex, planIndex))
+			}
+		} else if requestIndex != -1 {
+			return nil, invalid(fmt.Sprintf("inferred component plan %d must use request_index -1", planIndex))
 		}
-		if _, duplicate := seen[index]; duplicate {
-			return nil, invalid(fmt.Sprintf("component index %d is duplicated", index))
+		if candidate.Name == nil || candidate.Description == nil || candidate.Kind == nil || candidate.States == nil {
+			return nil, invalid(fmt.Sprintf("component plan %d must contain name, description, kind, and states", planIndex))
 		}
-		seen[index] = struct{}{}
 		if candidate.Size == nil || candidate.Size.Width == nil || candidate.Size.Height == nil {
 			return nil, invalid(fmt.Sprintf("component plan %d size must contain width and height", planIndex))
+		}
+		name := strings.TrimSpace(*candidate.Name)
+		description := strings.TrimSpace(*candidate.Description)
+		if planIndex < len(definitions) {
+			name = strings.TrimSpace(definitions[planIndex].Name)
+			description = strings.TrimSpace(definitions[planIndex].Description)
+		} else {
+			if err := validateRequiredText("inferred component name", name, maxItemNameLength); err != nil {
+				return nil, invalid(err.Error())
+			}
+			if err := validateRequiredText("inferred component description", description, maxItemDescriptionLength); err != nil {
+				return nil, invalid(err.Error())
+			}
+		}
+		nameKey := strings.ToLower(name)
+		if _, duplicate := names[nameKey]; duplicate {
+			return nil, invalid(fmt.Sprintf("component name %q is duplicated", name))
+		}
+		names[nameKey] = struct{}{}
+		kind := strings.ToLower(strings.TrimSpace(*candidate.Kind))
+		if !validUISetComponentKind(kind) {
+			return nil, invalid(fmt.Sprintf("component plan %d has unsupported kind %q", planIndex, kind))
+		}
+		states, err := validateUISetPlanStates(planIndex, kind, *candidate.States)
+		if err != nil {
+			return nil, invalid(err.Error())
 		}
 		width, height := *candidate.Size.Width, *candidate.Size.Height
 		if width == 0 || height == 0 {
 			return nil, invalid(fmt.Sprintf("component plan %d size must be positive", planIndex))
 		}
-		if width > maxUISetComponentEdge || height > maxUISetComponentEdge ||
-			width > canvas.Width || height > canvas.Height {
+		if width > maxUISetComponentEdge || height > maxUISetComponentEdge || width > canvas.Width || height > canvas.Height {
 			return nil, invalid(fmt.Sprintf("component plan %d size must fit within the UI Set canvas", planIndex))
 		}
-		definition := definitions[index]
-		plans[index] = UISetComponentPlan{
-			Index: uint(index), Name: definition.Name, Description: definition.Description,
-			Size: assetdomain.Size{Width: width, Height: height},
+		if uint64(width)*uint64(len(states)) > maxUISetComponentEdge {
+			return nil, invalid(fmt.Sprintf("component plan %d state strip exceeds %d pixels", planIndex, maxUISetComponentEdge))
+		}
+		plans[planIndex] = UISetComponentPlan{
+			Index: uint(planIndex), Name: name, Description: description, Kind: kind,
+			States: states, Size: assetdomain.Size{Width: width, Height: height},
 		}
 	}
 	return plans, nil
+}
+
+func validUISetComponentKind(kind string) bool {
+	switch kind {
+	case "panel", "button", "icon", "indicator", "bar", "slot", "cursor", "badge", "other":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateUISetPlanStates(planIndex int, kind string, candidates []string) ([]string, error) {
+	if len(candidates) == 0 || len(candidates) > maxUISetStates {
+		return nil, fmt.Errorf("component plan %d states must contain between 1 and %d entries", planIndex, maxUISetStates)
+	}
+	states := make([]string, len(candidates))
+	seen := make(map[string]struct{}, len(candidates))
+	for index, candidate := range candidates {
+		state := strings.TrimSpace(candidate)
+		if err := validateRequiredText("state name", state, maxUISetStateNameLength); err != nil {
+			return nil, fmt.Errorf("component plan %d state %d: %w", planIndex, index, err)
+		}
+		key := strings.ToLower(state)
+		if _, duplicate := seen[key]; duplicate {
+			return nil, fmt.Errorf("component plan %d state %q is duplicated", planIndex, state)
+		}
+		seen[key] = struct{}{}
+		states[index] = state
+	}
+	if kind == "bar" && (len(states) != 1 || !strings.EqualFold(states[0], "empty")) {
+		return nil, fmt.Errorf("component plan %d bar must contain only the empty state", planIndex)
+	}
+	return states, nil
 }
 
 func validateEditPayloadBase(projectID, assetID uint, creativeBrief string) error {

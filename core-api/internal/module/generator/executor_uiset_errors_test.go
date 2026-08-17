@@ -61,8 +61,8 @@ func TestUISetExecutorErrorBranches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (&executor{}).Generate(context.Background(), GenerateUISet, encoded); !errors.Is(err, ErrLLMServiceRequired) {
-		t.Fatalf("expected missing LLM error, got %v", err)
+	if _, err := (&executor{}).Generate(context.Background(), GenerateUISet, encoded); !errors.Is(err, ErrImageServiceRequired) {
+		t.Fatalf("expected missing image service error, got %v", err)
 	}
 	executor := &executor{llm: &uiSetTestLLM{}}
 	for _, test := range []struct {
@@ -81,7 +81,7 @@ func TestUISetExecutorErrorBranches(t *testing.T) {
 			}
 		})
 	}
-	if _, err := executor.Generate(context.Background(), GenerateUISet, encoded); !errors.Is(err, ErrInvalidUISetPlan) {
+	if _, err := executor.planUISetComponents(context.Background(), payload); !errors.Is(err, ErrInvalidUISetPlan) {
 		t.Fatalf("expected nil-completion plan error, got %v", err)
 	}
 	wantErr := errors.New("planning failed")
