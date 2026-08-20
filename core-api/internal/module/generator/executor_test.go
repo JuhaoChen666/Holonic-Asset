@@ -127,6 +127,20 @@ func (s *imageProcessorStub) RemoveBackground(
 	}, nil
 }
 
+func (s *imageProcessorStub) FlipHorizontal(
+	_ context.Context,
+	request *imageprocessor.FlipHorizontalRequest,
+) (*imageprocessor.FlipHorizontalResult, error) {
+	*s.events = append(*s.events, "flip_horizontal")
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &imageprocessor.FlipHorizontalResult{
+		ImageBase64: "mirrored:" + request.ImageBase64,
+		MIMEType:    "image/png",
+	}, nil
+}
+
 func (s *imageProcessorStub) Resize(
 	_ context.Context,
 	request *imageprocessor.ResizeRequest,
