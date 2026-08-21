@@ -9,18 +9,18 @@ import (
 
 func TestSceneryPromptsContainSharedVisualContract(t *testing.T) {
 	plan := prompts.SceneryPlan(prompts.SceneryPlanInput{
-		AssetName: "Valley", CreativeBrief: "dawn valley", Style: "pixel art",
-		Perspective: "Side-On", ProjectName: "Starbound", GameType: "RPG",
-		TargetPlatform: "PC", ProjectDescription: "exploration", Width: 640, Height: 360,
+		AssetName: "Valley", CreativeBrief: "dawn valley",
+		Perspective: "Side-On", Width: 640, Height: 360,
+		HasProjectReference: true,
 	})
 	layer := prompts.SceneryLayer(prompts.SceneryLayerInput{
-		AssetName: "Valley", CreativeBrief: "dawn valley", Style: "pixel art",
+		AssetName: "Valley", CreativeBrief: "dawn valley",
 		Perspective: "Side-On", ProjectName: "Starbound", GameType: "RPG",
 		TargetPlatform: "PC", ProjectDescription: "exploration", Width: 640, Height: 360,
 		LayerID: 2, LayerName: "Mountains", LayerCreativeBrief: "distant ridge",
 	}, "solid matte")
 	layout := prompts.SceneryLayoutAnalysis(prompts.SceneryLayoutAnalysisInput{
-		AssetName: "Valley", CreativeBrief: "dawn valley", Style: "pixel art",
+		AssetName: "Valley", CreativeBrief: "dawn valley",
 		Perspective: "Side-On", ProjectName: "Starbound", GameType: "RPG",
 		TargetPlatform: "PC", ProjectDescription: "exploration", Width: 640, Height: 360,
 		Layers: []prompts.SceneryLayoutLayerInput{{ID: 1, Name: "Sky"}, {ID: 2, Name: "Mountains"}},
@@ -60,32 +60,42 @@ func TestSceneryLayerPromptDistinguishesBackdropAndOverlay(t *testing.T) {
 }
 
 func TestSceneryPlanPromptContainsSceneContextAndPlanningRules(t *testing.T) {
-	prompt := prompts.SceneryPlan(prompts.SceneryPlanInput{
-		AssetName: "Valley", CreativeBrief: "dawn valley", Style: "pixel art",
-		Perspective: "Side-On", ProjectName: "Starbound", GameType: "RPG",
-		TargetPlatform: "PC", ProjectDescription: "exploration", Width: 640, Height: 360,
+	promptWithRef := prompts.SceneryPlan(prompts.SceneryPlanInput{
+		AssetName: "Valley", CreativeBrief: "dawn valley",
+		Perspective: "Side-On", Width: 640, Height: 360,
+		HasProjectReference: true,
 	})
 	for _, required := range []string{
-		"Valley", "dawn valley", "pixel art", "Side-On", "Starbound", "RPG", "PC",
-		"exploration", `<dimensions width="640" height="360" />`,
+		"Valley", "dawn valley", "Side-On",
+		`<dimensions width="640" height="360" />`,
 		"Decide the number of layers", "back-to-front compositing order",
 		"intended placement, framing, scale, depth", "backend assigns stable IDs",
+		"Visual Prototype Guidance", "Reference Image 1 is the project's visual prototype",
 	} {
-		if !strings.Contains(prompt, required) {
-			t.Fatalf("prompt omitted %q: %s", required, prompt)
+		if !strings.Contains(promptWithRef, required) {
+			t.Fatalf("prompt with ref omitted %q: %s", required, promptWithRef)
 		}
+	}
+
+	promptWithoutRef := prompts.SceneryPlan(prompts.SceneryPlanInput{
+		AssetName: "Valley", CreativeBrief: "dawn valley",
+		Perspective: "Side-On", Width: 640, Height: 360,
+		HasProjectReference: false,
+	})
+	if !strings.Contains(promptWithoutRef, "No reference images are supplied") {
+		t.Fatalf("prompt without ref expected fallback guidance: %s", promptWithoutRef)
 	}
 }
 
 func TestSceneryLayoutAnalysisPromptContainsContextAndImageMapping(t *testing.T) {
 	prompt := prompts.SceneryLayoutAnalysis(prompts.SceneryLayoutAnalysisInput{
-		AssetName: "Valley", CreativeBrief: "dawn valley", Style: "pixel art",
+		AssetName: "Valley", CreativeBrief: "dawn valley",
 		Perspective: "Side-On", ProjectName: "Starbound", GameType: "RPG",
 		TargetPlatform: "PC", ProjectDescription: "exploration", Width: 640, Height: 360,
 		Layers: []prompts.SceneryLayoutLayerInput{{ID: 1, Name: "Sky"}, {ID: 2, Name: "Mountains"}},
 	})
 	for _, required := range []string{
-		"Valley", "dawn valley", "pixel art", "Side-On", "Starbound", "RPG", "PC", "exploration",
+		"Valley", "dawn valley", "Side-On", "Starbound", "RPG", "PC", "exploration",
 		`<dimensions width="640" height="360" />`, "positive X to the right", "Rotation is clockwise",
 		"Return exactly one layout", "already registered to the complete final canvas", "Default to position (0, 0)",
 		"first attached image is the authoritative opaque full-canvas backdrop", "unique lowest zIndex",

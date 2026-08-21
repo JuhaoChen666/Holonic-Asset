@@ -9,6 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
 	"io"
 	"math"
 	"slices"
@@ -22,26 +25,37 @@ import (
 	assetdomain "github.com/1024XEngineer/Holonic-Asset/internal/module/workspace/asset"
 )
 
-const maxSceneryLayerGenerationAttempts = 3
+const (
+	maxSceneryLayerGenerationAttempts = 3
+	maxSceneryLLMAttempts             = 10
+	maxSceneryPipelineRounds          = 5
+)
 
 func (e *executor) planSceneryLayers(
 	ctx context.Context,
 	payload CreateSceneryPayload,
+	reviewFeedback string,
 ) ([]SceneryLayerDefinition, error) {
+	var images []llmclient.ImageInput
+	referenceKey := payload.Reference
+	if referenceKey != "" && e.references != nil {
+		if resolvedURL, err := e.references.ResolveReference(ctx, referenceKey); err == nil && resolvedURL != "" {
+			images = append(images, llmclient.ImageInput{URL: resolvedURL})
+		}
+	}
+
 	prompt := prompts.SceneryPlan(prompts.SceneryPlanInput{
-		AssetName:          payload.AssetName,
-		CreativeBrief:      payload.CreativeBrief,
-		Style:              payload.Style,
-		Perspective:        payload.Perspective,
-		ProjectName:        payload.ProjectContext.Name,
-		GameType:           payload.ProjectContext.GameType,
-		TargetPlatform:     payload.ProjectContext.TargetPlatform,
-		ProjectDescription: payload.ProjectContext.Description,
-		Width:              payload.Dimensions.Width,
-		Height:             payload.Dimensions.Height,
+		AssetName:           payload.AssetName,
+		CreativeBrief:       payload.CreativeBrief,
+		Perspective:         payload.Perspective,
+		Width:               payload.Dimensions.Width,
+		Height:              payload.Dimensions.Height,
+		HasProjectReference: len(images) > 0,
+		ReviewFeedback:      reviewFeedback,
 	})
 	completion, err := e.llm.Complete(ctx, &llmclient.CompletionRequest{
 		Prompt: prompt,
+		Images: images,
 		ResponseSchema: llmclient.JSONSchema{
 			Name:   sceneryLayerPlanSchemaName,
 			Schema: append([]byte(nil), sceneryLayerPlanJSONSchema...),
@@ -57,23 +71,41 @@ func (e *executor) planSceneryLayers(
 }
 
 func (e *executor) generateScenery(ctx context.Context, payload CreateSceneryPayload) (json.RawMessage, error) {
-	plan, err := e.planSceneryLayers(ctx, payload)
-	if err != nil {
-		return nil, err
+	var lastLaidOut []LaidOutSceneryLayer
+	var reviewFeedback string
+
+	for round := 1; round <= maxSceneryPipelineRounds; round++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		plan, err := e.planSceneryLayers(ctx, payload, reviewFeedback)
+		if err != nil {
+			return nil, err
+		}
+
+		layers, err := e.generateSceneryLayers(ctx, payload, plan)
+		if err != nil {
+			return nil, err
+		}
+
+		laidOut, approved, notes, err := e.analyzeSceneryLayout(ctx, payload, layers)
+		if err != nil {
+			return nil, err
+		}
+
+		lastLaidOut = laidOut
+		reviewFeedback = notes
+		if approved || round == maxSceneryPipelineRounds {
+			break
+		}
 	}
-	layers, err := e.generateSceneryLayers(ctx, payload, plan)
-	if err != nil {
-		return nil, err
-	}
-	laidOut, err := e.analyzeSceneryLayout(ctx, payload, layers)
-	if err != nil {
-		return nil, err
-	}
-	return e.persistScenery(ctx, payload, laidOut)
+
+	return e.persistScenery(ctx, payload, lastLaidOut)
 }
 
 func (e *executor) generateSceneryLayers(ctx context.Context, payload CreateSceneryPayload, plan []SceneryLayerDefinition) ([]ProcessedSceneryLayer, error) {
-	references := []string(nil)
+	baseReferences := []string(nil)
 	if payload.Reference != "" {
 		reference := payload.Reference
 		if e.references != nil {
@@ -83,22 +115,80 @@ func (e *executor) generateSceneryLayers(ctx context.Context, payload CreateScen
 			}
 			reference = resolved
 		}
-		references = []string{reference}
+		baseReferences = []string{reference}
 	}
-	layers := make([]ProcessedSceneryLayer, 0, len(plan))
-	for layerIndex, layer := range plan {
+
+	// Generate layers from front-to-back (reverse order: Foremost -> Midground -> Backmost)
+	// so foundational terrain and backdrops can see exactly where the core foreground
+	// structures/subjects are positioned and align paths, rivers, horizons, and lighting seamlessly.
+	processedMap := make(map[uint]ProcessedSceneryLayer, len(plan))
+	for i := len(plan) - 1; i >= 0; i-- {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		// The planner contract is back-to-front, so the first layer is the
-		// authoritative opaque backdrop used by generation and layout.
-		processed, err := e.generateSceneryLayer(ctx, payload, layer, layerIndex == 0, references)
+		layer := plan[i]
+		isBackmost := (i == 0)
+
+		layerRefs := append([]string(nil), baseReferences...)
+		if len(processedMap) > 0 {
+			compositeURI, err := e.composeReferencePreview(payload.Dimensions, plan, processedMap)
+			if err == nil && compositeURI != "" {
+				layerRefs = append(layerRefs, compositeURI)
+			}
+		}
+
+		processed, err := e.generateSceneryLayer(ctx, payload, layer, isBackmost, layerRefs)
 		if err != nil {
 			return nil, err
 		}
-		layers = append(layers, *processed)
+		processedMap[layer.ID] = *processed
+	}
+
+	// Return layers reassembled in natural back-to-front order [Layer 1, Layer 2, ..., Layer N]
+	layers := make([]ProcessedSceneryLayer, len(plan))
+	for i, layer := range plan {
+		layers[i] = processedMap[layer.ID]
 	}
 	return layers, nil
+}
+
+func (e *executor) composeReferencePreview(
+	dimensions assetdomain.Size,
+	plan []SceneryLayerDefinition,
+	processedMap map[uint]ProcessedSceneryLayer,
+) (string, error) {
+	if len(processedMap) == 0 {
+		return "", nil
+	}
+	w := int(dimensions.Width)
+	h := int(dimensions.Height)
+	if w <= 0 || h <= 0 {
+		w, h = 640, 360
+	}
+	canvas := image.NewRGBA(image.Rect(0, 0, w, h))
+
+	// Draw existing layers in back-to-front plan order
+	for _, layerDef := range plan {
+		processed, ok := processedMap[layerDef.ID]
+		if !ok {
+			continue
+		}
+		rawBytes, err := base64.StdEncoding.DecodeString(processed.ImageBase64)
+		if err != nil {
+			continue
+		}
+		img, _, err := image.Decode(bytes.NewReader(rawBytes))
+		if err != nil {
+			continue
+		}
+		draw.Draw(canvas, canvas.Bounds(), img, image.Point{}, draw.Over)
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, canvas); err != nil {
+		return "", err
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
 func (e *executor) generateSceneryLayer(
@@ -109,7 +199,7 @@ func (e *executor) generateSceneryLayer(
 	references []string,
 ) (*ProcessedSceneryLayer, error) {
 	prompt := prompts.SceneryLayer(prompts.SceneryLayerInput{
-		AssetName: payload.AssetName, CreativeBrief: payload.CreativeBrief, Style: payload.Style,
+		AssetName: payload.AssetName, CreativeBrief: payload.CreativeBrief,
 		Perspective: payload.Perspective, ProjectName: payload.ProjectContext.Name, GameType: payload.ProjectContext.GameType,
 		TargetPlatform: payload.ProjectContext.TargetPlatform, ProjectDescription: payload.ProjectContext.Description,
 		Width: payload.Dimensions.Width, Height: payload.Dimensions.Height, LayerID: layer.ID,
@@ -183,7 +273,7 @@ func (e *executor) processSceneryLayerCandidate(
 		ImageBase64: imageBase64,
 		Options: imageprocessor.ResizeOptions{
 			Width: int(payload.Dimensions.Width), Height: int(payload.Dimensions.Height), Margin: 0,
-			CropContent: false, CoverCanvas: isBackmost, Mode: imageprocessor.RasterModePixel,
+			CropContent: false, CoverCanvas: true, Mode: imageprocessor.RasterModePixel,
 		},
 	})
 	if err != nil {
@@ -217,12 +307,12 @@ func (e *executor) analyzeSceneryLayout(
 	ctx context.Context,
 	payload CreateSceneryPayload,
 	layers []ProcessedSceneryLayer,
-) ([]LaidOutSceneryLayer, error) {
+) ([]LaidOutSceneryLayer, bool, string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, false, "", err
 	}
 	if len(layers) == 0 {
-		return nil, fmt.Errorf("%w: at least one processed layer is required", ErrInvalidSceneryLayout)
+		return nil, false, "", fmt.Errorf("%w: at least one processed layer is required", ErrInvalidSceneryLayout)
 	}
 	promptLayers := make([]prompts.SceneryLayoutLayerInput, len(layers))
 	images := make([]llmclient.ImageInput, len(layers))
@@ -231,7 +321,7 @@ func (e *executor) analyzeSceneryLayout(
 		images[index] = llmclient.ImageInput{URL: "data:" + layer.MediaType + ";base64," + layer.ImageBase64}
 	}
 	prompt := prompts.SceneryLayoutAnalysis(prompts.SceneryLayoutAnalysisInput{
-		AssetName: payload.AssetName, CreativeBrief: payload.CreativeBrief, Style: payload.Style,
+		AssetName: payload.AssetName, CreativeBrief: payload.CreativeBrief,
 		Perspective: payload.Perspective, ProjectName: payload.ProjectContext.Name, GameType: payload.ProjectContext.GameType,
 		TargetPlatform: payload.ProjectContext.TargetPlatform, ProjectDescription: payload.ProjectContext.Description,
 		Width: payload.Dimensions.Width, Height: payload.Dimensions.Height, Layers: promptLayers,
@@ -242,14 +332,14 @@ func (e *executor) analyzeSceneryLayout(
 		ResponseSchema: llmclient.JSONSchema{Name: sceneryLayerLayoutSchemaName, Schema: append([]byte(nil), sceneryLayerLayoutJSONSchema...)},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("generator: analyze scenery layout: %w", err)
+		return nil, false, "", fmt.Errorf("generator: analyze scenery layout: %w", err)
 	}
 	if completion == nil {
-		return nil, fmt.Errorf("%w: LLM returned no completion", ErrInvalidSceneryLayout)
+		return nil, false, "", fmt.Errorf("%w: LLM returned no completion", ErrInvalidSceneryLayout)
 	}
-	layouts, err := decodeSceneryLayouts(completion.JSON, layers, payload.Dimensions)
+	layouts, approved, notes, err := decodeSceneryLayouts(completion.JSON, layers, payload.Dimensions)
 	if err != nil {
-		return nil, err
+		return nil, false, "", err
 	}
 	result := make([]LaidOutSceneryLayer, len(layers))
 	for index, layer := range layers {
@@ -257,37 +347,37 @@ func (e *executor) analyzeSceneryLayout(
 			ID: layer.ID, Name: layer.Name, ImageBase64: layer.ImageBase64, MediaType: layer.MediaType, Layout: layouts[layer.ID],
 		}
 	}
-	return result, nil
+	return result, approved, notes, nil
 }
 
-func decodeSceneryLayouts(raw []byte, layers []ProcessedSceneryLayer, dimensions assetdomain.Size) (map[uint]SceneryLayerLayout, error) {
+func decodeSceneryLayouts(raw []byte, layers []ProcessedSceneryLayer, dimensions assetdomain.Size) (map[uint]SceneryLayerLayout, bool, string, error) {
 	invalid := func(reason string) error { return fmt.Errorf("%w: %s", ErrInvalidSceneryLayout, reason) }
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var response sceneryLayoutResponse
 	if err := decoder.Decode(&response); err != nil {
-		return nil, invalid(err.Error())
+		return nil, false, "", invalid(err.Error())
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
 		if err == nil {
-			return nil, invalid("trailing data")
+			return nil, false, "", invalid("trailing data")
 		}
-		return nil, invalid(err.Error())
+		return nil, false, "", invalid(err.Error())
 	}
 	if response.Layers == nil {
-		return nil, invalid("layers is required")
+		return nil, false, "", invalid("layers is required")
 	}
 	if len(*response.Layers) != len(layers) {
-		return nil, invalid(fmt.Sprintf("expected %d layer layouts, got %d", len(layers), len(*response.Layers)))
+		return nil, false, "", invalid(fmt.Sprintf("expected %d layer layouts, got %d", len(layers), len(*response.Layers)))
 	}
 	knownIDs := make(map[uint]struct{}, len(layers))
 	for _, layer := range layers {
 		if layer.ID == 0 {
-			return nil, invalid("processed layer ID must be positive")
+			return nil, false, "", invalid("processed layer ID must be positive")
 		}
 		if _, exists := knownIDs[layer.ID]; exists {
-			return nil, invalid(fmt.Sprintf("processed layer ID %d is duplicated", layer.ID))
+			return nil, false, "", invalid(fmt.Sprintf("processed layer ID %d is duplicated", layer.ID))
 		}
 		knownIDs[layer.ID] = struct{}{}
 	}
@@ -295,23 +385,30 @@ func decodeSceneryLayouts(raw []byte, layers []ProcessedSceneryLayer, dimensions
 	for index, candidate := range *response.Layers {
 		layout, id, err := validateSceneryLayoutCandidate(candidate, dimensions)
 		if err != nil {
-			return nil, invalid(fmt.Sprintf("layer layout %d: %v", index+1, err))
+			return nil, false, "", invalid(fmt.Sprintf("layer layout %d: %v", index+1, err))
 		}
 		if _, known := knownIDs[id]; !known {
-			return nil, invalid(fmt.Sprintf("unknown layer ID %d", id))
+			return nil, false, "", invalid(fmt.Sprintf("unknown layer ID %d", id))
 		}
 		if _, duplicate := layouts[id]; duplicate {
-			return nil, invalid(fmt.Sprintf("layer ID %d is duplicated", id))
+			return nil, false, "", invalid(fmt.Sprintf("layer ID %d is duplicated", id))
 		}
 		layouts[id] = layout
 	}
 	for id := range knownIDs {
 		if _, present := layouts[id]; !present {
-			return nil, invalid(fmt.Sprintf("layer ID %d is missing", id))
+			return nil, false, "", invalid(fmt.Sprintf("layer ID %d is missing", id))
 		}
 	}
 	normalizeSceneryLayouts(layouts, layers)
-	return layouts, nil
+	if response.Approved == nil {
+		return nil, false, "", invalid("approved field is required")
+	}
+	if response.ReviewNotes == nil || strings.TrimSpace(*response.ReviewNotes) == "" {
+		return nil, false, "", invalid("review_notes field is required")
+	}
+	approved := *response.Approved
+	return layouts, approved, strings.TrimSpace(*response.ReviewNotes), nil
 }
 
 func normalizeSceneryLayouts(layouts map[uint]SceneryLayerLayout, layers []ProcessedSceneryLayer) {
@@ -356,7 +453,15 @@ func normalizeSceneryLayouts(layouts map[uint]SceneryLayerLayout, layers []Proce
 }
 
 func validateSceneryLayoutCandidate(candidate sceneryLayoutCandidate, dimensions assetdomain.Size) (SceneryLayerLayout, uint, error) {
-	if candidate.ID == nil || *candidate.ID == 0 {
+	idVal := uint(0)
+	if candidate.ID != nil && *candidate.ID > 0 {
+		idVal = *candidate.ID
+	} else if candidate.LayerID != nil && *candidate.LayerID > 0 {
+		idVal = *candidate.LayerID
+	} else if candidate.LayerId != nil && *candidate.LayerId > 0 {
+		idVal = *candidate.LayerId
+	}
+	if idVal == 0 {
 		return SceneryLayerLayout{}, 0, fmt.Errorf("positive id is required")
 	}
 	position, err := requiredLayoutVector(candidate.Position, "position")
@@ -389,7 +494,7 @@ func validateSceneryLayoutCandidate(candidate sceneryLayoutCandidate, dimensions
 	if !intersects {
 		return SceneryLayerLayout{}, 0, fmt.Errorf("transformed bounds do not intersect the canvas")
 	}
-	return layout, *candidate.ID, nil
+	return layout, idVal, nil
 }
 
 func requiredLayoutVector(candidate *sceneryLayoutVectorCandidate, name string) (SceneryLayoutVector, error) {

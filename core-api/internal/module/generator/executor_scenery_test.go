@@ -86,6 +86,7 @@ func (s *sceneryProcessorStub) RemoveBackground(_ context.Context, request *imag
 	return &imageprocessor.RemoveBackgroundResult{ImageBase64: "removed:" + request.ImageBase64, MIMEType: "image/png"}, nil
 }
 
+
 func (s *sceneryProcessorStub) Resize(_ context.Context, request *imageprocessor.ResizeRequest) (*imageprocessor.ResizeResult, error) {
 	*s.events = append(*s.events, "resize")
 	s.resizeRequests = append(s.resizeRequests, request)
@@ -216,7 +217,7 @@ func TestExecutorPlansAndAnalyzesSceneryAroundLayerGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate scenery: %v", err)
 	}
-	wantEvents := []string{"llm", "image", "resize", "verify", "image", "remove", "resize", "verify", "llm", "create_scenery_asset"}
+	wantEvents := []string{"llm", "image", "remove", "resize", "verify", "image", "resize", "verify", "llm", "create_scenery_asset"}
 	if !reflect.DeepEqual(events, wantEvents) {
 		t.Fatalf("unexpected workflow: got %v want %v", events, wantEvents)
 	}
@@ -224,15 +225,15 @@ func TestExecutorPlansAndAnalyzesSceneryAroundLayerGeneration(t *testing.T) {
 		t.Fatalf("expected text planning followed by multimodal layout: %+v", llm.requests)
 	}
 	if len(images.requests) != 2 || images.requests[0].Size != "640x360" ||
-		!strings.Contains(images.requests[0].Prompt, "warm sky") || !strings.Contains(images.requests[1].Prompt, "distant peaks") {
+		!strings.Contains(images.requests[0].Prompt, "distant peaks") || !strings.Contains(images.requests[1].Prompt, "warm sky") {
 		t.Fatalf("planner output was not passed to image generation: %+v", images.requests)
 	}
-	if len(processor.verifyRequests) != 2 || processor.verifyRequests[0].Profile != imageprocessor.ProfileOpaqueBackground ||
-		processor.verifyRequests[1].Profile != imageprocessor.ProfileGeneric {
+	if len(processor.verifyRequests) != 2 || processor.verifyRequests[0].Profile != imageprocessor.ProfileGeneric ||
+		processor.verifyRequests[1].Profile != imageprocessor.ProfileOpaqueBackground {
 		t.Fatalf("unexpected scenery verification profiles: %+v", processor.verifyRequests)
 	}
 	if len(processor.resizeRequests) != 2 || !processor.resizeRequests[0].Options.CoverCanvas ||
-		processor.resizeRequests[1].Options.CoverCanvas {
+		!processor.resizeRequests[1].Options.CoverCanvas {
 		t.Fatalf("unexpected scenery resize modes: %+v", processor.resizeRequests)
 	}
 	var decoded generator.ExecutionResult
@@ -307,7 +308,7 @@ func TestCreateBuildsSceneryPayloadFromProjectContext(t *testing.T) {
 
 	_, err := engine.Create(context.Background(), &generator.Request{
 		ProjectID: 42, Kind: generator.GenerateScenery, CreativeBrief: "a valley at dawn",
-		Parameters: json.RawMessage(`{"asset_name":"Dawn Valley","style":"","dimensions":{"width":640,"height":360},"reference":""}`),
+		Parameters: json.RawMessage(`{"asset_name":"Dawn Valley","dimensions":{"width":640,"height":360},"reference":""}`),
 	})
 	if err != nil {
 		t.Fatalf("create scenery: %v", err)
@@ -316,7 +317,7 @@ func TestCreateBuildsSceneryPayloadFromProjectContext(t *testing.T) {
 	if err := json.Unmarshal(tasks.createdTask.Payload, &payload); err != nil {
 		t.Fatalf("decode scenery payload: %v", err)
 	}
-	if payload.AssetName != "Dawn Valley" || payload.Style != "pixel art" || payload.Perspective != "Side-On" ||
+	if payload.AssetName != "Dawn Valley" || payload.Perspective != "Side-On" ||
 		payload.ProjectContext.Name != "Moon Valley" || payload.ProjectContext.GameType != "RPG" ||
 		payload.ProjectContext.TargetPlatform != "PC" || payload.ProjectContext.Description != "exploration" ||
 		payload.Reference != "uploads/generated-1.png" || projects.calls != 1 ||
@@ -390,14 +391,14 @@ func newSceneryExecutor(assets generator.AssetWriter, resources generator.Resour
 func validSceneryLLM(events *[]string) *sceneryLLMStub {
 	return &sceneryLLMStub{events: events, results: []*llmclient.CompletionResult{
 		{JSON: json.RawMessage(`{"layers":[{"name":"Sky","creative_brief":"warm sky"},{"name":"Mountains","creative_brief":"distant peaks"}]}`)},
-		{JSON: json.RawMessage(`{"layers":[{"id":2,"position":{"x":100,"y":40},"scale":{"x":0.8,"y":0.8},"rotation":0,"opacity":0.75,"zIndex":20},{"id":1,"position":{"x":0,"y":0},"scale":{"x":1,"y":1},"rotation":0,"opacity":1,"zIndex":-10}]}`)},
+		{JSON: json.RawMessage(`{"approved":true,"review_notes":"aligned and harmonious","layers":[{"id":2,"position":{"x":100,"y":40},"scale":{"x":0.8,"y":0.8},"rotation":0,"opacity":0.75,"zIndex":20},{"id":1,"position":{"x":0,"y":0},"scale":{"x":1,"y":1},"rotation":0,"opacity":1,"zIndex":-10}]}`)},
 	}}
 }
 
 func validSingleLayerSceneryLLM() *sceneryLLMStub {
 	return &sceneryLLMStub{results: []*llmclient.CompletionResult{
 		{JSON: json.RawMessage(`{"layers":[{"name":"Sky","creative_brief":"warm sky"}]}`)},
-		{JSON: json.RawMessage(`{"layers":[{"id":1,"position":{"x":0,"y":0},"scale":{"x":1,"y":1},"rotation":0,"opacity":1,"zIndex":0}]}`)},
+		{JSON: json.RawMessage(`{"approved":true,"review_notes":"aligned and harmonious","layers":[{"id":1,"position":{"x":0,"y":0},"scale":{"x":1,"y":1},"rotation":0,"opacity":1,"zIndex":0}]}`)},
 	}}
 }
 
@@ -411,7 +412,7 @@ func sceneryImageResults() []*imageclient.GenerateResult {
 func sceneryPayload(t *testing.T) json.RawMessage {
 	t.Helper()
 	payload, err := json.Marshal(generator.CreateSceneryPayload{
-		AssetName: "Mountain Valley", CreativeBrief: "A valley at dawn", Style: "pixel art",
+		AssetName: "Mountain Valley", CreativeBrief: "A valley at dawn",
 		Dimensions: assetdomain.Size{Width: 640, Height: 360}, Perspective: "Side-On", ProjectID: 42,
 	})
 	if err != nil {
