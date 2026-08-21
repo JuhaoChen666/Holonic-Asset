@@ -16,12 +16,13 @@ import (
 // CreateCharacterPrototypePayload is the complete input consumed by the
 // character prototype task handler.
 type CreateCharacterPrototypePayload struct {
-	AssetName     string           `json:"asset_name"`
-	CreativeBrief string           `json:"creative_brief"`
-	Dimensions    assetdomain.Size `json:"dimensions"`
-	Perspective   string           `json:"perspective"`
-	Reference     string           `json:"reference"`
-	ProjectID     uint             `json:"project_id"`
+	AssetName        string           `json:"asset_name"`
+	CreativeBrief    string           `json:"creative_brief"`
+	Dimensions       assetdomain.Size `json:"dimensions"`
+	Perspective      string           `json:"perspective"`
+	Reference        string           `json:"reference"`         // User-supplied subject or concept reference.
+	ProjectReference string           `json:"project_reference"` // Backend-supplied project style reference.
+	ProjectID        uint             `json:"project_id"`
 }
 
 // EditCharacterPrototypePayload is the self-contained input consumed by the
@@ -72,12 +73,13 @@ type EditAnimationPayload struct {
 // CreateObjectPrototypePayload is the complete input consumed by the object
 // prototype task handler.
 type CreateObjectPrototypePayload struct {
-	AssetName     string           `json:"asset_name"`
-	CreativeBrief string           `json:"creative_brief"`
-	Dimensions    assetdomain.Size `json:"dimensions"`
-	Perspective   string           `json:"perspective"`
-	Reference     string           `json:"reference"`
-	ProjectID     uint             `json:"project_id"`
+	AssetName        string           `json:"asset_name"`
+	CreativeBrief    string           `json:"creative_brief"`
+	Dimensions       assetdomain.Size `json:"dimensions"`
+	Perspective      string           `json:"perspective"`
+	Reference        string           `json:"reference"`         // User-supplied subject or concept reference.
+	ProjectReference string           `json:"project_reference"` // Backend-supplied project style reference.
+	ProjectID        uint             `json:"project_id"`
 }
 
 type SceneryLayerDefinition struct {
@@ -96,9 +98,9 @@ type SceneryProjectContext struct {
 type CreateSceneryPayload struct {
 	AssetName      string                `json:"asset_name"`
 	CreativeBrief  string                `json:"creative_brief"`
-	Style          string                `json:"style"`
 	Dimensions     assetdomain.Size      `json:"dimensions"`
 	Perspective    string                `json:"perspective"`
+	Style          string                `json:"style,omitempty"`
 	ProjectContext SceneryProjectContext `json:"project_context"`
 	Reference      string                `json:"reference"`
 	ProjectID      uint                  `json:"project_id"`
@@ -120,15 +122,35 @@ const (
 
 var sceneryLayerPlanJSONSchema = json.RawMessage(`{"type":"object","additionalProperties":false,"required":["layers"],"properties":{"layers":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["name","creative_brief"],"properties":{"name":{"type":"string","minLength":1},"creative_brief":{"type":"string","minLength":1}}}}}}`)
 
-var sceneryLayerLayoutJSONSchema = json.RawMessage(`{"type":"object","additionalProperties":false,"required":["layers"],"properties":{"layers":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["id","position","scale","rotation","opacity","zIndex"],"properties":{"id":{"type":"integer","minimum":1},"position":{"type":"object","additionalProperties":false,"required":["x","y"],"properties":{"x":{"type":"number"},"y":{"type":"number"}}},"scale":{"type":"object","additionalProperties":false,"required":["x","y"],"properties":{"x":{"type":"number","exclusiveMinimum":0},"y":{"type":"number","exclusiveMinimum":0}}},"rotation":{"type":"number"},"opacity":{"type":"number","minimum":0,"maximum":1},"zIndex":{"type":"integer"}}}}}}`)
+var sceneryLayerLayoutJSONSchema = json.RawMessage(`{"type":"object","additionalProperties":false,"required":["approved","review_notes","layers"],"properties":{"approved":{"type":"boolean"},"review_notes":{"type":"string"},"layers":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["id","position","scale","rotation","opacity","zIndex"],"properties":{"id":{"type":"integer","minimum":1},"position":{"type":"object","additionalProperties":false,"required":["x","y"],"properties":{"x":{"type":"number"},"y":{"type":"number"}}},"scale":{"type":"object","additionalProperties":false,"required":["x","y"],"properties":{"x":{"type":"number","exclusiveMinimum":0},"y":{"type":"number","exclusiveMinimum":0}}},"rotation":{"type":"number"},"opacity":{"type":"number","minimum":0,"maximum":1},"zIndex":{"type":"integer"}}}}}}`)
 
 type sceneryLayerPlanResponse struct {
 	Layers *[]sceneryLayerPlanCandidate `json:"layers"`
 }
 
 type sceneryLayerPlanCandidate struct {
-	Name          *string `json:"name"`
-	CreativeBrief *string `json:"creative_brief"`
+	ID              *uint   `json:"id,omitempty"`
+	LayerID         *uint   `json:"layer_id,omitempty"`
+	LayerIDCamel    *uint   `json:"layerId,omitempty"`
+	Name            *string `json:"name,omitempty"`
+	LayerName       *string `json:"layer_name,omitempty"`
+	LayerNameCamel  *string `json:"layerName,omitempty"`
+	Title           *string `json:"title,omitempty"`
+	CreativeBrief   *string `json:"creative_brief,omitempty"`
+	Brief           *string `json:"brief,omitempty"`
+	LayerBrief      *string `json:"layer_brief,omitempty"`
+	LayerBriefCamel *string `json:"layerBrief,omitempty"`
+	Description     *string `json:"description,omitempty"`
+	Prompt          *string `json:"prompt,omitempty"`
+	Placement       *string `json:"placement,omitempty"`
+	Position        *any    `json:"position,omitempty"`
+	Type            *string `json:"type,omitempty"`
+	Depth           *any    `json:"depth,omitempty"`
+	Role            *string `json:"role,omitempty"`
+	Elements        *any    `json:"elements,omitempty"`
+	Details         *any    `json:"details,omitempty"`
+	Order           *int    `json:"order,omitempty"`
+	ZIndex          *int    `json:"zIndex,omitempty"`
 }
 
 type SceneryLayoutVector struct {
@@ -153,11 +175,18 @@ type LaidOutSceneryLayer struct {
 }
 
 type sceneryLayoutResponse struct {
-	Layers *[]sceneryLayoutCandidate `json:"layers"`
+	Type        *string                   `json:"type,omitempty"`
+	Approved    *bool                     `json:"approved"`
+	ReviewNotes *string                   `json:"review_notes"`
+	Layers      *[]sceneryLayoutCandidate `json:"layers"`
 }
 
 type sceneryLayoutCandidate struct {
 	ID       *uint                         `json:"id"`
+	LayerID  *uint                         `json:"layer_id,omitempty"`
+	LayerId  *uint                         `json:"layerId,omitempty"`
+	Name     *string                       `json:"name,omitempty"`
+	Type     *string                       `json:"type,omitempty"`
 	Position *sceneryLayoutVectorCandidate `json:"position"`
 	Scale    *sceneryLayoutVectorCandidate `json:"scale"`
 	Rotation *float64                      `json:"rotation"`
@@ -177,38 +206,78 @@ type sceneryTransform struct {
 
 func decodeSceneryLayerPlan(raw []byte) ([]SceneryLayerDefinition, error) {
 	invalid := func(reason string) error { return fmt.Errorf("%w: %s", ErrInvalidSceneryPlan, reason) }
+
+	var candidates []sceneryLayerPlanCandidate
+
+	// Try object with layers property first
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var response sceneryLayerPlanResponse
-	if err := decoder.Decode(&response); err != nil {
-		return nil, invalid(err.Error())
-	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		if err == nil {
-			return nil, invalid("trailing data")
+	if err := decoder.Decode(&response); err == nil && response.Layers != nil {
+		var extra any
+		if err := decoder.Decode(&extra); err == io.EOF {
+			candidates = *response.Layers
 		}
-		return nil, invalid(err.Error())
 	}
-	if response.Layers == nil || len(*response.Layers) == 0 {
+
+	// Fallback to top-level array if object decoding didn't match
+	if candidates == nil {
+		decoder = json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&candidates); err != nil {
+			return nil, invalid(err.Error())
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			if err == nil {
+				return nil, invalid("trailing data")
+			}
+			return nil, invalid(err.Error())
+		}
+	}
+
+	if len(candidates) == 0 {
 		return nil, invalid("at least one layer is required")
 	}
-	layers := make([]SceneryLayerDefinition, len(*response.Layers))
+	layers := make([]SceneryLayerDefinition, len(candidates))
 	names := make(map[string]struct{}, len(layers))
-	for index, candidate := range *response.Layers {
-		if candidate.Name == nil || strings.TrimSpace(*candidate.Name) == "" {
+	for index, candidate := range candidates {
+		name := ""
+		if candidate.Name != nil && strings.TrimSpace(*candidate.Name) != "" {
+			name = strings.TrimSpace(*candidate.Name)
+		} else if candidate.LayerName != nil && strings.TrimSpace(*candidate.LayerName) != "" {
+			name = strings.TrimSpace(*candidate.LayerName)
+		} else if candidate.LayerNameCamel != nil && strings.TrimSpace(*candidate.LayerNameCamel) != "" {
+			name = strings.TrimSpace(*candidate.LayerNameCamel)
+		} else if candidate.Title != nil && strings.TrimSpace(*candidate.Title) != "" {
+			name = strings.TrimSpace(*candidate.Title)
+		}
+		if name == "" {
 			return nil, invalid(fmt.Sprintf("layer %d name is required", index+1))
 		}
-		name := strings.TrimSpace(*candidate.Name)
 		key := strings.ToLower(name)
 		if _, duplicate := names[key]; duplicate {
 			return nil, invalid(fmt.Sprintf("layer name %q is duplicated", name))
 		}
 		names[key] = struct{}{}
-		if candidate.CreativeBrief == nil || strings.TrimSpace(*candidate.CreativeBrief) == "" {
+		brief := ""
+		if candidate.CreativeBrief != nil && strings.TrimSpace(*candidate.CreativeBrief) != "" {
+			brief = strings.TrimSpace(*candidate.CreativeBrief)
+		} else if candidate.Brief != nil && strings.TrimSpace(*candidate.Brief) != "" {
+			brief = strings.TrimSpace(*candidate.Brief)
+		} else if candidate.LayerBrief != nil && strings.TrimSpace(*candidate.LayerBrief) != "" {
+			brief = strings.TrimSpace(*candidate.LayerBrief)
+		} else if candidate.LayerBriefCamel != nil && strings.TrimSpace(*candidate.LayerBriefCamel) != "" {
+			brief = strings.TrimSpace(*candidate.LayerBriefCamel)
+		} else if candidate.Description != nil && strings.TrimSpace(*candidate.Description) != "" {
+			brief = strings.TrimSpace(*candidate.Description)
+		} else if candidate.Prompt != nil && strings.TrimSpace(*candidate.Prompt) != "" {
+			brief = strings.TrimSpace(*candidate.Prompt)
+		}
+		if brief == "" {
 			return nil, invalid(fmt.Sprintf("layer %d creative brief is required", index+1))
 		}
-		layers[index] = SceneryLayerDefinition{ID: uint(index + 1), Name: name, CreativeBrief: strings.TrimSpace(*candidate.CreativeBrief)}
+		layers[index] = SceneryLayerDefinition{ID: uint(index + 1), Name: name, CreativeBrief: brief}
 	}
 	return layers, nil
 }

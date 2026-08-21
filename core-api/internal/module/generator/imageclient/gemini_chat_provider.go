@@ -517,6 +517,15 @@ func chatStatusError(response *http.Response) error {
 		message = response.Status
 	}
 	kind, transient := classifyChatStatus(response.StatusCode)
+	if kind == ErrorKindInvalidRequest {
+		lowerMsg := strings.ToLower(message)
+		if strings.Contains(lowerMsg, "no available channel") ||
+			strings.Contains(lowerMsg, "overloaded") ||
+			strings.Contains(lowerMsg, "temporarily unavailable") {
+			kind = ErrorKindUnavailable
+			transient = true
+		}
+	}
 	return newChatProviderError(kind, response.StatusCode, transient, message, readErr)
 }
 
